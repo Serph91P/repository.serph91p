@@ -41,7 +41,7 @@ ADDONS = [
         "owner": "Serph91P",
         "repo": "PlexKodiConnect",
         "addon_id": "plugin.video.plexkodiconnect",
-        "branch": "master",
+        "branch": "main",
     },
     {
         "owner": "Serph91P",
