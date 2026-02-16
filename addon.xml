@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="repository.serph91p" name="Serph91P Repository" version="1.0.0" provider-name="Serph91P">
+    <requires>
+        <import addon="xbmc.addon" version="12.0.0"/>
+    </requires>
+    <extension point="xbmc.addon.repository" name="Serph91P Repository">
+        <dir>
+            <info compressed="false">https://serph91p.github.io/repository.serph91p/repo/addons.xml</info>
+            <checksum>https://serph91p.github.io/repository.serph91p/repo/addons.xml.md5</checksum>
+            <datadir zip="true">https://serph91p.github.io/repository.serph91p/repo</datadir>
+        </dir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <platform>all</platform>
+        <summary lang="en_GB">Serph91P Kodi Repository</summary>
+        <summary lang="de_DE">Serph91P Kodi Repository</summary>
+        <description lang="en_GB">Custom Kodi addons maintained by Serph91P. Includes Gronkh.tv, Twitch, PlexKodiConnect, and TubeCast.</description>
+        <description lang="de_DE">Angepasste Kodi Addons von Serph91P. Enthaelt Gronkh.tv, Twitch, PlexKodiConnect und TubeCast.</description>
+        <assets>
+            <icon>resources/icon.png</icon>
+            <fanart>resources/fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon>

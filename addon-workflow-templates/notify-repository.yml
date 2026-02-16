@@ -1,0 +1,21 @@
+name: Notify Repository
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'LICENSE'
+
+jobs:
+  notify-repository:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger repository update
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.REPO_DISPATCH_TOKEN }}
+          repository: Serph91P/repository.serph91p
+          event-type: addon-updated
+          client-payload: '{"addon": "${{ github.event.repository.name }}", "ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'

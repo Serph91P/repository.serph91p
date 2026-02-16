@@ -1,0 +1,7 @@
+repo/
+_temp/
+_site/
+*.pyc
+__pycache__/
+.venv/
+*.zip
