@@ -45,6 +45,18 @@ ADDONS = [
     },
     {
         "owner": "Serph91P",
+        "repo": "plugin.video.plexkodiconnect.movies",
+        "addon_id": "plugin.video.plexkodiconnect.movies",
+        "branch": "main",
+    },
+    {
+        "owner": "Serph91P",
+        "repo": "plugin.video.plexkodiconnect.tvshows",
+        "addon_id": "plugin.video.plexkodiconnect.tvshows",
+        "branch": "main",
+    },
+    {
+        "owner": "Serph91P",
         "repo": "script.tubecast",
         "addon_id": "script.tubecast",
         "branch": "main",
