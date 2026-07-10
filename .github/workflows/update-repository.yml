@@ -14,11 +14,12 @@ on:
         default: 'false'
         type: boolean
 
-  # Also rebuild on push to main (e.g. when addon.xml of repo itself changes)
+  # Also rebuild on pushes that change repository inputs
   push:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - 'addon.xml'
+      - 'resources/**'
       - 'scripts/**'
       - '.github/workflows/**'
 
@@ -48,52 +49,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/build_repository.py
 
-      - name: Create GitHub Pages structure
-        run: |
-          # Create the pages output directory
-          mkdir -p _site
-
-          # Copy all addon directories with their ZIPs flat into _site
-          for addon_dir in repo/*/; do
-            addon_name=$(basename "$addon_dir")
-            mkdir -p "_site/${addon_name}"
-            cp -r "${addon_dir}"* "_site/${addon_name}/" 2>/dev/null || true
-
-            # Create Kodi-parseable directory listing for each addon
-            cd "_site/${addon_name}"
-            echo '<html><body>' > index.html
-            for f in *.zip *.xml *.png *.jpg; do
-              [ -f "$f" ] && echo "<a href=\"$f\">$f</a><br/>" >> index.html
-            done
-            echo '</body></html>' >> index.html
-            cd "$GITHUB_WORKSPACE"
-          done
-
-          # Copy addons.xml and md5 to root
-          cp repo/addons.xml _site/
-          cp repo/addons.xml.md5 _site/
-
-          # Copy repo ZIP to root for convenience
-          cp repo/repository.serph91p/*.zip _site/ 2>/dev/null || true
-
-          # Create Kodi-parseable root directory listing
-          cd _site
-          cat > index.html << 'HTMLEOF'
-          <html><body>
-          HTMLEOF
-
-          # List all addon directories
-          for d in */; do
-            dirname=$(basename "$d")
-            echo "<a href=\"${dirname}/\">${dirname}</a><br/>" >> index.html
-          done
-
-          # List root files
-          for f in *.zip *.xml *.md5; do
-            [ -f "$f" ] && echo "<a href=\"$f\">$f</a><br/>" >> index.html
-          done
-
-          echo '</body></html>' >> index.html
+      - name: Validate generated Pages manifest
+        run: python scripts/build_repository.py --validate-site
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
