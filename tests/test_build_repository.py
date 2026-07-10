@@ -603,6 +603,27 @@ class SourceArchiveValidationTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 builder.create_source_package(source_zip, "plugin.example", root)
 
+    def test_source_archive_directory_shaped_special_types_are_rejected(self):
+        special_types = {
+            "symlink": 0o120000,
+            "fifo": 0o010000,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for label, file_type in special_types.items():
+                source_zip = root / f"{label}.zip"
+                with zipfile.ZipFile(source_zip, "w") as archive:
+                    archive.writestr(
+                        "repo-main/addon.xml", addon_xml("plugin.example", "1.0.0")
+                    )
+                    special = zipfile.ZipInfo("repo-main/link/")
+                    special.create_system = 3
+                    special.external_attr = (file_type | 0o777) << 16
+                    archive.writestr(special, b"")
+
+                with self.subTest(label=label), self.assertRaises(RuntimeError):
+                    builder.create_source_package(source_zip, "plugin.example", root)
+
 
 class SiteManifestTests(unittest.TestCase):
     def test_manifest_requires_advertised_packages_assets_and_coverage(self):

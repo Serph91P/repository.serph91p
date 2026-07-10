@@ -264,15 +264,16 @@ def _validated_source_members(archive, addon_id):
         if canonical_name in canonical_names:
             raise RuntimeError(f"Duplicate source archive member: {name!r}")
         canonical_names.add(canonical_name)
+        file_type = (info.external_attr >> 16) & 0o170000
+        expected_types = (0, 0o040000) if info.is_dir() else (0, 0o100000)
+        if file_type not in expected_types:
+            raise RuntimeError(f"Unsupported source archive member type: {name!r}")
         if len(path.parts) == 1:
             if not info.is_dir():
                 raise RuntimeError(f"Source archive root must be a directory: {name!r}")
             continue
         if info.is_dir():
             continue
-        file_type = (info.external_attr >> 16) & 0o170000
-        if file_type not in (0, 0o100000):
-            raise RuntimeError(f"Unsupported source archive member type: {name!r}")
         relative_path = PurePosixPath(*path.parts[1:])
         files.append((relative_path, info))
         members[relative_name] = info
