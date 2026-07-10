@@ -14,11 +14,12 @@ on:
         default: 'false'
         type: boolean
 
-  # Also rebuild on push to main (e.g. when addon.xml of repo itself changes)
+  # Also rebuild on push to develop (e.g. when addon.xml of repo itself changes)
   push:
-    branches: [main]
+    branches: [develop]
     paths:
       - 'addon.xml'
+      - 'resources/**'
       - 'scripts/**'
       - '.github/workflows/**'
 
@@ -48,61 +49,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/build_repository.py
 
-      - name: Create GitHub Pages structure
-        run: |
-          # Create the pages output directory
-          mkdir -p _site
-
-          # Copy repo directory (contains addons.xml, addons.xml.md5, and addon ZIPs)
-          cp -r repo _site/repo
-
-          # Copy repository addon ZIP to root for easy installation
-          if [ -f "repository.serph91p-latest.zip" ]; then
-            mkdir -p _site/repository.serph91p
-            cp repo/repository.serph91p/*.zip _site/repository.serph91p/ 2>/dev/null || true
-            cp repository.serph91p-latest.zip _site/ 2>/dev/null || true
-          fi
-
-          # Create a simple index.html
-          cat > _site/index.html << 'HTMLEOF'
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-              <meta charset="UTF-8">
-              <title>Serph91P Kodi Repository</title>
-              <style>
-                  body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #1a1a2e; color: #eee; }
-                  h1 { color: #0f3460; }
-                  a { color: #e94560; }
-                  .install-box { background: #16213e; padding: 20px; border-radius: 8px; margin: 20px 0; }
-                  code { background: #0f3460; padding: 2px 8px; border-radius: 4px; }
-                  .addon-list { list-style: none; padding: 0; }
-                  .addon-list li { padding: 10px; margin: 5px 0; background: #16213e; border-radius: 4px; }
-              </style>
-          </head>
-          <body>
-              <h1>Serph91P Kodi Repository</h1>
-              <div class="install-box">
-                  <h2>Installation</h2>
-                  <ol>
-                      <li>Kodi &rarr; Settings &rarr; File Manager &rarr; Add Source</li>
-                      <li>Enter URL: <code>https://serph91p.github.io/repository.serph91p/</code></li>
-                      <li>Go to Add-ons &rarr; Install from ZIP file &rarr; Choose the source</li>
-                      <li>Select <code>repository.serph91p/</code> folder &rarr; Install the ZIP</li>
-                      <li>Then install addons from: Install from Repository &rarr; Serph91P Repository</li>
-                  </ol>
-              </div>
-              <h2>Included Addons</h2>
-              <ul class="addon-list">
-                  <li><strong>Gronkh.tv</strong> - Gronkh.tv Stream Archive</li>
-                  <li><strong>Twitch</strong> - Twitch for Kodi</li>
-                  <li><strong>python-twitch</strong> - Twitch API Module</li>
-                  <li><strong>PlexKodiConnect</strong> - Plex integration for Kodi</li>
-                  <li><strong>TubeCast</strong> - YouTube Cast to Kodi</li>
-              </ul>
-          </body>
-          </html>
-          HTMLEOF
+      - name: Validate generated Pages manifest
+        run: python scripts/build_repository.py --validate-site
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

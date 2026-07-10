@@ -10,6 +10,8 @@ Custom Kodi addon repository hosted on GitHub Pages.
 | plugin.video.twitch | Twitch fuer Kodi |
 | script.module.python.twitch | Twitch API Modul |
 | plugin.video.plexkodiconnect | PlexKodiConnect |
+| plugin.video.plexkodiconnect.movies | PlexKodiConnect Filme |
+| plugin.video.plexkodiconnect.tvshows | PlexKodiConnect Serien |
 | script.tubecast | TubeCast - YouTube Cast |
 
 ## Installation in Kodi
