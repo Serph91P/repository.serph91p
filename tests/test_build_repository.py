@@ -211,19 +211,77 @@ class BuildRepositoryRegressionTests(unittest.TestCase):
 
 
 class ReleaseValidationTests(unittest.TestCase):
-    def test_only_verified_missing_latest_release_returns_no_release(self):
+    def test_empty_releases_after_missing_latest_returns_no_release(self):
         not_found = urllib.error.HTTPError(
             "https://example.invalid/releases/latest", 404, "Not Found", {}, None
         )
         with mock.patch.object(
             builder,
             "github_api_get",
-            side_effect=[not_found, {"full_name": "owner/repo"}],
+            side_effect=[not_found, []],
         ) as github_api_get:
             result = builder.get_latest_release_zip("owner", "repo", "plugin.example")
 
         self.assertIs(builder.NO_RELEASE, result)
-        self.assertEqual(2, github_api_get.call_count)
+        self.assertEqual(
+            [
+                mock.call(f"{builder.GH_API}/repos/owner/repo/releases/latest"),
+                mock.call(f"{builder.GH_API}/repos/owner/repo/releases"),
+            ],
+            github_api_get.call_args_list,
+        )
+
+    def test_existing_prerelease_after_missing_latest_fails_closed(self):
+        not_found = urllib.error.HTTPError(
+            "https://example.invalid/releases/latest", 404, "Not Found", {}, None
+        )
+        with mock.patch.object(
+            builder,
+            "github_api_get",
+            side_effect=[not_found, [{"prerelease": True, "tag_name": "v2.0.0-rc1"}]],
+        ) as github_api_get:
+            with self.assertRaises(RuntimeError):
+                builder.get_latest_release_zip("owner", "repo", "plugin.example")
+
+        self.assertEqual(
+            f"{builder.GH_API}/repos/owner/repo/releases",
+            github_api_get.call_args_list[1].args[0],
+        )
+
+    def test_release_list_failure_after_missing_latest_propagates(self):
+        not_found = urllib.error.HTTPError(
+            "https://example.invalid/releases/latest", 404, "Not Found", {}, None
+        )
+        list_error = urllib.error.URLError("release list unavailable")
+        with mock.patch.object(
+            builder,
+            "github_api_get",
+            side_effect=[not_found, list_error],
+        ) as github_api_get:
+            with self.assertRaises(urllib.error.URLError):
+                builder.get_latest_release_zip("owner", "repo", "plugin.example")
+
+        self.assertEqual(
+            f"{builder.GH_API}/repos/owner/repo/releases",
+            github_api_get.call_args_list[1].args[0],
+        )
+
+    def test_malformed_release_list_after_missing_latest_fails_closed(self):
+        not_found = urllib.error.HTTPError(
+            "https://example.invalid/releases/latest", 404, "Not Found", {}, None
+        )
+        with mock.patch.object(
+            builder,
+            "github_api_get",
+            side_effect=[not_found, {"message": "unexpected response"}],
+        ) as github_api_get:
+            with self.assertRaises(RuntimeError):
+                builder.get_latest_release_zip("owner", "repo", "plugin.example")
+
+        self.assertEqual(
+            f"{builder.GH_API}/repos/owner/repo/releases",
+            github_api_get.call_args_list[1].args[0],
+        )
 
     def test_release_identity_must_agree(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -293,7 +351,35 @@ class ReleaseValidationTests(unittest.TestCase):
                     root / "output",
                 )
 
-    def test_release_archive_symlink_is_rejected(self):
+    def test_release_archive_referenced_symlink_asset_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            addon_id = "plugin.example"
+            archive_path = root / f"{addon_id}-1.0.0.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr(
+                    f"{addon_id}/addon.xml",
+                    addon_xml(
+                        addon_id,
+                        "1.0.0",
+                        (("icon", "resources/icon.png"),),
+                    ),
+                )
+                symlink = zipfile.ZipInfo(f"{addon_id}/resources/icon.png")
+                symlink.create_system = 3
+                symlink.external_attr = 0o120777 << 16
+                archive.writestr(symlink, "target.png")
+
+            with self.assertRaises(RuntimeError):
+                builder.publish_release_zip(
+                    archive_path,
+                    addon_id,
+                    "1.0.0",
+                    archive_path.name,
+                    root / "output",
+                )
+
+    def test_release_archive_unreferenced_symlink_member_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             addon_id = "plugin.example"
@@ -313,6 +399,63 @@ class ReleaseValidationTests(unittest.TestCase):
                     archive_path.name,
                     root / "output",
                 )
+
+    def test_release_archive_allows_regular_directory_and_omitted_type_bits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            addon_id = "plugin.example"
+            archive_path = root / f"{addon_id}-1.0.0.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                metadata = zipfile.ZipInfo(f"{addon_id}/addon.xml")
+                metadata.create_system = 3
+                metadata.external_attr = 0o100644 << 16
+                archive.writestr(metadata, addon_xml(addon_id, "1.0.0"))
+                resources = zipfile.ZipInfo(f"{addon_id}/resources/")
+                resources.create_system = 3
+                resources.external_attr = 0o040755 << 16
+                archive.writestr(resources, b"")
+                no_type = zipfile.ZipInfo(f"{addon_id}/resources/data.txt")
+                no_type.create_system = 0
+                no_type.external_attr = 0
+                archive.writestr(no_type, b"data")
+
+            builder.publish_release_zip(
+                archive_path,
+                addon_id,
+                "1.0.0",
+                archive_path.name,
+                root / "output",
+            )
+
+    def test_release_archive_other_special_member_types_are_rejected(self):
+        special_types = {
+            "fifo": 0o010000,
+            "character-device": 0o020000,
+            "block-device": 0o060000,
+            "socket": 0o140000,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            addon_id = "plugin.example"
+            for label, file_type in special_types.items():
+                archive_path = root / f"{addon_id}-1.0.0.zip"
+                with zipfile.ZipFile(archive_path, "w") as archive:
+                    archive.writestr(
+                        f"{addon_id}/addon.xml", addon_xml(addon_id, "1.0.0")
+                    )
+                    special = zipfile.ZipInfo(f"{addon_id}/unreferenced-{label}")
+                    special.create_system = 3
+                    special.external_attr = (file_type | 0o644) << 16
+                    archive.writestr(special, b"special")
+
+                with self.subTest(label=label), self.assertRaises(RuntimeError):
+                    builder.publish_release_zip(
+                        archive_path,
+                        addon_id,
+                        "1.0.0",
+                        archive_path.name,
+                        root / "output",
+                    )
 
     def test_release_archive_validates_unreferenced_member_crc(self):
         with tempfile.TemporaryDirectory() as directory:

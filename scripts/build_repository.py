@@ -99,14 +99,14 @@ def get_latest_release_zip(owner, repo, addon_id):
     except urllib.error.HTTPError as error:
         if error.code != 404:
             raise
-        repository = github_api_get(releases_url)
-        expected_name = f"{owner}/{repo}"
-        if (
-            not isinstance(repository, dict)
-            or repository.get("full_name") != expected_name
-        ):
+        releases = github_api_get(f"{releases_url}/releases")
+        if not isinstance(releases, list):
             raise RuntimeError(
-                f"Could not verify repository after missing latest release: {expected_name}"
+                f"Malformed release list after missing latest release for {owner}/{repo}"
+            ) from error
+        if releases:
+            raise RuntimeError(
+                f"Release list is not empty after missing latest release for {owner}/{repo}"
             ) from error
         return NO_RELEASE
     tag = data.get("tag_name")
