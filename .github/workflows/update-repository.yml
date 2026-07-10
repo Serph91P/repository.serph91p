@@ -14,9 +14,9 @@ on:
         default: 'false'
         type: boolean
 
-  # Also rebuild on push to develop (e.g. when addon.xml of repo itself changes)
+  # Also rebuild on pushes that change repository inputs
   push:
-    branches: [develop]
+    branches: [main, develop]
     paths:
       - 'addon.xml'
       - 'resources/**'
