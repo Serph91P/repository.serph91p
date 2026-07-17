@@ -1094,6 +1094,56 @@ class TestBuildImmutableRepository(unittest.TestCase):
             self.assertEqual((repo / "marker").read_bytes(), b"old-repo")
             self.assertEqual((site / "marker").read_bytes(), b"old-site")
 
+    def test_lower_candidate_version_is_rejected_before_promotion(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = _make_repo_root(tmpdir)
+            existing_repo = root / "repo"
+            existing_site = root / "_site"
+            existing_repo.mkdir()
+            existing_site.mkdir()
+
+            higher_version = "3.1.10"
+            existing_addon_xml = (
+                '<addons><addon id="plugin.video.twitch" name="Twitch" '
+                f'version="{higher_version}" '
+                'provider-name="test"/></addons>'
+            )
+            existing_manifest_bytes = existing_addon_xml.encode("utf-8")
+            (existing_repo / "addons.xml").write_bytes(existing_manifest_bytes)
+            checksum = hashlib.md5(existing_manifest_bytes).hexdigest()
+            (existing_repo / "addons.xml.md5").write_text(
+                checksum, encoding="utf-8"
+            )
+            (existing_site / "addons.xml").write_bytes(existing_manifest_bytes)
+            (existing_site / "addons.xml.md5").write_text(
+                checksum, encoding="utf-8"
+            )
+            (existing_repo / "sentinel.txt").write_bytes(b"keep-repo")
+            (existing_site / "sentinel.txt").write_bytes(b"keep-site")
+
+            addon_zip = root / "addon.zip"
+            _make_addon_zip(addon_zip, FIXTURE_ADDON_ID, FIXTURE_VERSION)
+            evidence_archive = root / "evidence.zip"
+            package_archive = root / "package.zip"
+            evidence = _valid_evidence(artifact_sha256=_zip_sha256(addon_zip))
+            _make_evidence_archive(evidence, evidence_archive)
+            _make_package_archive(addon_zip, package_archive)
+            api_get, download = _make_mock_api_responses(
+                evidence_archive, package_archive
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "plugin.video.twitch"):
+                self._build_with_mock(root, _valid_dispatch(), api_get, download)
+
+            self.assertEqual(
+                (existing_repo / "addons.xml").read_bytes(), existing_manifest_bytes
+            )
+            self.assertEqual(
+                (existing_site / "addons.xml").read_bytes(), existing_manifest_bytes
+            )
+            self.assertTrue((existing_repo / "sentinel.txt").is_file())
+            self.assertTrue((existing_site / "sentinel.txt").is_file())
+
     def test_successful_build_updates_output(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = _make_repo_root(tmpdir)

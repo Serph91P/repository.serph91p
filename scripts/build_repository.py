@@ -60,6 +60,64 @@ ADDONS = [
     },
 ]
 
+def _parse_kodi_version(version_string):
+    """Parse a dotted numeric addon version into a comparable tuple of ints.
+
+    Fails closed if the string is empty or any segment is not a non-negative
+    integer.
+    """
+    if not version_string or not isinstance(version_string, str):
+        raise RuntimeError(f"Invalid addon version: {version_string!r}")
+    parts = version_string.split(".")
+    parsed = []
+    for part in parts:
+        if not part or not part.isdigit():
+            raise RuntimeError(f"Invalid addon version segment in {version_string!r}")
+        parsed.append(int(part))
+    if not parsed:
+        raise RuntimeError(f"Invalid addon version: {version_string!r}")
+    return tuple(parsed)
+
+
+def _check_version_monotonicity(repo_root, addon_id, candidate_version):
+    """Reject a candidate version lower than the currently published version.
+
+    Reads the existing repo addons.xml, finds the current version for addon_id,
+    and ensures candidate >= current. Equal versions are permitted because
+    rerunning an immutable candidate may be needed. Fails closed if the
+    manifest is missing, unparseable, or the existing version is invalid.
+    """
+    manifest_path = repo_root / "repo" / "addons.xml"
+    if not manifest_path.is_file():
+        return
+    try:
+        root = ET.parse(manifest_path).getroot()
+    except (OSError, ET.ParseError) as error:
+        raise RuntimeError(
+            f"Cannot parse existing manifest {manifest_path} for version check: "
+            f"{error}"
+        ) from error
+    if root.tag != "addons":
+        raise RuntimeError(
+            f"Existing manifest {manifest_path} has unexpected root {root.tag!r}"
+        )
+    for addon in root.findall("addon"):
+        if addon.get("id") == addon_id:
+            current_version = addon.get("version")
+            if not current_version:
+                raise RuntimeError(
+                    f"Existing addon {addon_id} in {manifest_path} has no version"
+                )
+            candidate_tuple = _parse_kodi_version(candidate_version)
+            current_tuple = _parse_kodi_version(current_version)
+            if candidate_tuple < current_tuple:
+                raise RuntimeError(
+                    f"Rejecting {addon_id} version {candidate_version}: "
+                    f"currently published version {current_version} is newer"
+                )
+            return
+
+
 REPO_ADDON_ID = "repository.serph91p"
 SCRIPT_DIR = Path(__file__).parent
 REPO_ROOT = SCRIPT_DIR.parent
@@ -1012,6 +1070,8 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
                 f"candidate_sha {candidate_sha!r} does not match "
                 f"run head_sha {run_data.get('head_sha')!r}"
             )
+
+        _check_version_monotonicity(repo_root, addon_id, addon_version)
 
         with zipfile.ZipFile(package_archive, "r") as zf:
             package_members = [m for m in zf.namelist() if not m.endswith("/")]
