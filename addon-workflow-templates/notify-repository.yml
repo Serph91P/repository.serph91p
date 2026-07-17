@@ -1,21 +1,57 @@
 name: Notify Repository
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '.gitignore'
-      - 'LICENSE'
+  workflow_run:
+    workflows: ["Add-on Validations"]
+    types: [completed]
 
 jobs:
   notify-repository:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'develop'
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger repository update
+      - name: Download validation evidence artifact
+        uses: actions/github-script@v7
+        id: evidence
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: run.id,
+            });
+            const evidence = artifacts.data.artifacts.find(
+              a => a.name === 'validation-evidence'
+            );
+            if (!evidence) {
+              core.setFailed('validation-evidence artifact not found');
+              return;
+            }
+            const pkg = artifacts.data.artifacts.find(
+              a => a.name === 'addon-package'
+            );
+            if (!pkg) {
+              core.setFailed('addon-package artifact not found');
+              return;
+            }
+            const download = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: evidence.id,
+              archive_format: 'zip',
+            });
+            const fs = require('fs');
+            fs.writeFileSync('/tmp/evidence.zip',
+              Buffer.from(download.data));
+            core.setOutput('run_id', run.id);
+            core.setOutput('head_sha', run.head_sha);
+            core.setOutput('head_branch', run.head_branch);
+
+      - name: Trigger repository publication
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.REPO_DISPATCH_TOKEN }}
           repository: Serph91P/repository.serph91p
-          event-type: addon-updated
-          client-payload: '{"addon": "${{ github.event.repository.name }}", "ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
+          event-type: validated-addon-publication
+          client-payload: '{"source_repo": "${{ github.repository }}", "candidate_sha": "${{ steps.evidence.outputs.head_sha }}", "validation_run_id": ${{ steps.evidence.outputs.run_id }}, "validation_head_sha": "${{ steps.evidence.outputs.head_sha }}", "validation_workflow": "Add-on Validations", "expected_branch": "${{ steps.evidence.outputs.head_branch }}"}'
