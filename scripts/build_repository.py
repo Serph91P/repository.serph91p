@@ -60,6 +60,7 @@ ADDONS = [
     },
 ]
 
+
 def _parse_kodi_version(version_string):
     """Parse a dotted numeric addon version into a comparable tuple of ints.
 
@@ -71,7 +72,7 @@ def _parse_kodi_version(version_string):
     parts = version_string.split(".")
     parsed = []
     for part in parts:
-        if not part or not part.isdigit():
+        if not part or not part.isascii() or not part.isdigit():
             raise RuntimeError(f"Invalid addon version segment in {version_string!r}")
         parsed.append(int(part))
     if not parsed:
@@ -94,14 +95,18 @@ def _check_version_monotonicity(repo_root, addon_id, candidate_version):
         root = ET.parse(manifest_path).getroot()
     except (OSError, ET.ParseError) as error:
         raise RuntimeError(
-            f"Cannot parse existing manifest {manifest_path} for version check: "
-            f"{error}"
+            f"Cannot parse existing manifest {manifest_path} for version check: {error}"
         ) from error
     if root.tag != "addons":
         raise RuntimeError(
             f"Existing manifest {manifest_path} has unexpected root {root.tag!r}"
         )
-    for addon in root.findall("addon"):
+    for addon in root:
+        if addon.tag != "addon":
+            raise RuntimeError(
+                f"Existing manifest {manifest_path} has unexpected element "
+                f"{addon.tag!r}"
+            )
         if addon.get("id") == addon_id:
             current_version = addon.get("version")
             if not current_version:

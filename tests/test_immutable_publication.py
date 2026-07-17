@@ -159,6 +159,14 @@ def _make_repo_root(tmpdir):
     return root
 
 
+def _snapshot_tree(directory):
+    return {
+        str(path.relative_to(directory)): path.read_bytes()
+        for path in sorted(directory.rglob("*"))
+        if path.is_file()
+    }
+
+
 class TestValidateDispatchPayload(unittest.TestCase):
     def test_valid_payload_passes(self):
         builder.validate_dispatch_payload(_valid_dispatch())
@@ -1111,15 +1119,13 @@ class TestBuildImmutableRepository(unittest.TestCase):
             existing_manifest_bytes = existing_addon_xml.encode("utf-8")
             (existing_repo / "addons.xml").write_bytes(existing_manifest_bytes)
             checksum = hashlib.md5(existing_manifest_bytes).hexdigest()
-            (existing_repo / "addons.xml.md5").write_text(
-                checksum, encoding="utf-8"
-            )
+            (existing_repo / "addons.xml.md5").write_text(checksum, encoding="utf-8")
             (existing_site / "addons.xml").write_bytes(existing_manifest_bytes)
-            (existing_site / "addons.xml.md5").write_text(
-                checksum, encoding="utf-8"
-            )
+            (existing_site / "addons.xml.md5").write_text(checksum, encoding="utf-8")
             (existing_repo / "sentinel.txt").write_bytes(b"keep-repo")
             (existing_site / "sentinel.txt").write_bytes(b"keep-site")
+            repo_before = _snapshot_tree(existing_repo)
+            site_before = _snapshot_tree(existing_site)
 
             addon_zip = root / "addon.zip"
             _make_addon_zip(addon_zip, FIXTURE_ADDON_ID, FIXTURE_VERSION)
@@ -1132,17 +1138,60 @@ class TestBuildImmutableRepository(unittest.TestCase):
                 evidence_archive, package_archive
             )
 
-            with self.assertRaisesRegex(RuntimeError, "plugin.video.twitch"):
+            with self.assertRaises(RuntimeError) as ctx:
                 self._build_with_mock(root, _valid_dispatch(), api_get, download)
 
-            self.assertEqual(
-                (existing_repo / "addons.xml").read_bytes(), existing_manifest_bytes
+            error = str(ctx.exception)
+            self.assertIn(FIXTURE_ADDON_ID, error)
+            self.assertIn(FIXTURE_VERSION, error)
+            self.assertIn(higher_version, error)
+            self.assertEqual(_snapshot_tree(existing_repo), repo_before)
+            self.assertEqual(_snapshot_tree(existing_site), site_before)
+
+    def test_malformed_existing_manifest_is_rejected_without_output_changes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            repo = root / "repo"
+            site = root / "_site"
+            repo.mkdir()
+            site.mkdir()
+            (repo / "addons.xml").write_bytes(b"<addons><unexpected/></addons>")
+            (repo / "addons.xml.md5").write_bytes(b"existing-checksum")
+            (site / "marker").write_bytes(b"existing-site")
+            repo_before = _snapshot_tree(repo)
+            site_before = _snapshot_tree(site)
+
+            with self.assertRaises(RuntimeError):
+                builder._check_version_monotonicity(
+                    root, FIXTURE_ADDON_ID, FIXTURE_VERSION
+                )
+
+            self.assertEqual(_snapshot_tree(repo), repo_before)
+            self.assertEqual(_snapshot_tree(site), site_before)
+
+    def test_non_ascii_existing_version_is_rejected_without_output_changes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            repo = root / "repo"
+            site = root / "_site"
+            repo.mkdir()
+            site.mkdir()
+            (repo / "addons.xml").write_text(
+                '<addons><addon id="plugin.video.twitch" version="٣.١.١٠"/></addons>',
+                encoding="utf-8",
             )
-            self.assertEqual(
-                (existing_site / "addons.xml").read_bytes(), existing_manifest_bytes
-            )
-            self.assertTrue((existing_repo / "sentinel.txt").is_file())
-            self.assertTrue((existing_site / "sentinel.txt").is_file())
+            (repo / "addons.xml.md5").write_bytes(b"existing-checksum")
+            (site / "marker").write_bytes(b"existing-site")
+            repo_before = _snapshot_tree(repo)
+            site_before = _snapshot_tree(site)
+
+            with self.assertRaisesRegex(RuntimeError, "Invalid addon version segment"):
+                builder._check_version_monotonicity(
+                    root, FIXTURE_ADDON_ID, FIXTURE_VERSION
+                )
+
+            self.assertEqual(_snapshot_tree(repo), repo_before)
+            self.assertEqual(_snapshot_tree(site), site_before)
 
     def test_successful_build_updates_output(self):
         with tempfile.TemporaryDirectory() as tmpdir:
