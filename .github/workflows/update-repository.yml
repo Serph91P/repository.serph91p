@@ -1,27 +1,8 @@
 name: Update Repository
 
 on:
-  # Triggered by addon repos via repository_dispatch
   repository_dispatch:
-    types: [addon-updated]
-
-  # Manual trigger
-  workflow_dispatch:
-    inputs:
-      force_rebuild:
-        description: 'Force rebuild all addons'
-        required: false
-        default: 'false'
-        type: boolean
-
-  # Also rebuild on pushes that change repository inputs
-  push:
-    branches: [main, develop]
-    paths:
-      - 'addon.xml'
-      - 'resources/**'
-      - 'scripts/**'
-      - '.github/workflows/**'
+    types: [validated-addon-publication]
 
 permissions:
   contents: write
@@ -47,6 +28,8 @@ jobs:
       - name: Build repository
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_GITHUB_TOKEN: ${{ secrets.SOURCE_ARTIFACT_TOKEN }}
+          DISPATCH_PAYLOAD: ${{ github.event.client_payload && toJSON(github.event.client_payload) || '' }}
         run: python scripts/build_repository.py
 
       - name: Validate generated Pages manifest
