@@ -1,8 +1,11 @@
 import hashlib
+import io
 import json
+import os
 import shutil
 import tempfile
 import unittest
+import urllib.error
 import zipfile
 from pathlib import Path
 from unittest import mock
@@ -584,8 +587,13 @@ class TestBuildImmutableRepository(unittest.TestCase):
 
     def _build_with_mock(self, root, dispatch_payload, api_get, download):
         with (
+            mock.patch.dict(
+                os.environ, {"SOURCE_GITHUB_TOKEN": "test-source-token"}, clear=False
+            ),
             mock.patch.object(builder, "github_api_get", side_effect=api_get),
+            mock.patch.object(builder, "source_github_api_get", side_effect=api_get),
             mock.patch.object(builder, "download_file", side_effect=download),
+            mock.patch.object(builder, "source_download_file", side_effect=download),
             mock.patch.object(builder, "ADDONS", [self._target_addon_config]),
         ):
             builder.build_immutable_repository(dispatch_payload, root)
@@ -623,6 +631,50 @@ class TestBuildImmutableRepository(unittest.TestCase):
             ):
                 builder.build_immutable_repository(_valid_dispatch(), root)
             download.assert_not_called()
+
+    def test_branch_move_after_artifact_download_is_rejected_before_promotion(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = _make_repo_root(tmpdir)
+            existing_repo = root / "repo"
+            existing_site = root / "_site"
+            existing_repo.mkdir()
+            existing_site.mkdir()
+            (existing_repo / "sentinel.txt").write_text("old repo", encoding="utf-8")
+            (existing_site / "sentinel.txt").write_text("old site", encoding="utf-8")
+
+            addon_zip = root / "addon.zip"
+            _make_addon_zip(addon_zip, FIXTURE_ADDON_ID, FIXTURE_VERSION)
+            evidence_archive = root / "evidence.zip"
+            package_archive = root / "package.zip"
+            evidence = _valid_evidence(artifact_sha256=_zip_sha256(addon_zip))
+            _make_evidence_archive(evidence, evidence_archive)
+            _make_package_archive(addon_zip, package_archive)
+            base_api_get, download = _make_mock_api_responses(
+                evidence_archive, package_archive
+            )
+            ref_reads = 0
+
+            def api_get(url):
+                nonlocal ref_reads
+                if "/git/ref/heads/" in url:
+                    ref_reads += 1
+                    sha = FIXTURE_SHA if ref_reads == 1 else "b" * 40
+                    return {"object": {"sha": sha}}
+                return base_api_get(url)
+
+            with self.assertRaisesRegex(RuntimeError, "moved"):
+                self._build_with_mock(root, _valid_dispatch(), api_get, download)
+
+            self.assertEqual(ref_reads, 2)
+            self.assertEqual(
+                (existing_repo / "sentinel.txt").read_text(encoding="utf-8"),
+                "old repo",
+            )
+            self.assertEqual(
+                (existing_site / "sentinel.txt").read_text(encoding="utf-8"),
+                "old site",
+            )
+            self.assertFalse((root / "_staging").exists())
 
     def test_workflow_mismatch_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1121,6 +1173,381 @@ class TestBuildImmutableRepository(unittest.TestCase):
                     )
 
 
+class TestSourceTokenIsolation(unittest.TestCase):
+    """Source-repository requests must use a separate SOURCE_GITHUB_TOKEN."""
+
+    _target_addon_config = {
+        "owner": "Serph91P",
+        "repo": "plugin.video.twitch",
+        "addon_id": "plugin.video.twitch",
+        "branch": "main",
+    }
+
+    def _build_with_mock(self, root, dispatch_payload, api_get, download):
+        with (
+            mock.patch.object(builder, "source_github_api_get", side_effect=api_get),
+            mock.patch.object(builder, "source_download_file", side_effect=download),
+            mock.patch.object(builder, "ADDONS", [self._target_addon_config]),
+        ):
+            builder.build_immutable_repository(dispatch_payload, root)
+
+    def test_missing_source_token_fails_before_first_source_request(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = _make_repo_root(tmpdir)
+            with (
+                mock.patch.dict(os.environ, {}, clear=True),
+                self.assertRaises(RuntimeError) as ctx,
+            ):
+                builder.build_immutable_repository(_valid_dispatch(), root)
+            self.assertIn("SOURCE_GITHUB_TOKEN", str(ctx.exception))
+
+    def test_empty_source_token_fails_before_first_source_request(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = _make_repo_root(tmpdir)
+            with (
+                mock.patch.dict(
+                    os.environ, {"SOURCE_GITHUB_TOKEN": "   "}, clear=False
+                ),
+                self.assertRaises(RuntimeError) as ctx,
+            ):
+                builder.build_immutable_repository(_valid_dispatch(), root)
+            self.assertIn("SOURCE_GITHUB_TOKEN", str(ctx.exception))
+
+    def test_every_source_boundary_uses_source_token_not_target_token(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = _make_repo_root(tmpdir)
+            addon_zip = root / "addon.zip"
+            _make_addon_zip(addon_zip, FIXTURE_ADDON_ID, FIXTURE_VERSION)
+            evidence_archive = root / "evidence.zip"
+            package_archive = root / "package.zip"
+            evidence = _valid_evidence(artifact_sha256=_zip_sha256(addon_zip))
+            _make_evidence_archive(evidence, evidence_archive)
+            _make_package_archive(addon_zip, package_archive)
+
+            run_url = (
+                f"{builder.GH_API}/repos/{FIXTURE_SOURCE_REPO}/actions/runs/"
+                f"{FIXTURE_RUN_ID}"
+            )
+            ref_url = (
+                f"{builder.GH_API}/repos/{FIXTURE_SOURCE_REPO}/git/ref/heads/"
+                f"{FIXTURE_BRANCH}"
+            )
+            artifacts_url = f"{run_url}/artifacts"
+            evidence_url = "https://example.invalid/evidence.zip"
+            package_url = "https://example.invalid/package.zip"
+            responses = {
+                run_url: json.dumps(_valid_run()).encode(),
+                ref_url: json.dumps({"object": {"sha": FIXTURE_SHA}}).encode(),
+                artifacts_url: json.dumps(
+                    {
+                        "artifacts": [
+                            {
+                                "name": "validation-evidence",
+                                "id": 1,
+                                "expired": False,
+                                "archive_download_url": evidence_url,
+                            },
+                            {
+                                "name": "addon-package",
+                                "id": 2,
+                                "expired": False,
+                                "archive_download_url": package_url,
+                            },
+                        ]
+                    }
+                ).encode(),
+                evidence_url: evidence_archive.read_bytes(),
+                package_url: package_archive.read_bytes(),
+            }
+            captured_requests = []
+
+            def urlopen(request):
+                captured_requests.append(
+                    (request.full_url, request.get_header("Authorization"))
+                )
+                return io.BytesIO(responses[request.full_url])
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "SOURCE_GITHUB_TOKEN": "source-tok-abc",
+                        "GITHUB_TOKEN": "target-tok-xyz",
+                    },
+                    clear=True,
+                ),
+                mock.patch("urllib.request.urlopen", side_effect=urlopen),
+                mock.patch.object(builder, "ADDONS", [self._target_addon_config]),
+            ):
+                builder.build_immutable_repository(_valid_dispatch(), root)
+
+            self.assertEqual(
+                captured_requests,
+                [
+                    (run_url, "token source-tok-abc"),
+                    (ref_url, "token source-tok-abc"),
+                    (artifacts_url, "token source-tok-abc"),
+                    (evidence_url, "token source-tok-abc"),
+                    (package_url, "token source-tok-abc"),
+                    (ref_url, "token source-tok-abc"),
+                ],
+            )
+            self.assertNotIn("target-tok-xyz", repr(captured_requests))
+
+    def test_target_token_is_not_used_for_source_requests(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = _make_repo_root(tmpdir)
+            addon_zip = root / "addon.zip"
+            _make_addon_zip(addon_zip, FIXTURE_ADDON_ID, FIXTURE_VERSION)
+            evidence_archive = root / "evidence.zip"
+            package_archive = root / "package.zip"
+            evidence = _valid_evidence(artifact_sha256=_zip_sha256(addon_zip))
+            _make_evidence_archive(evidence, evidence_archive)
+            _make_package_archive(addon_zip, package_archive)
+
+            def api_get_side_effect(url):
+                if "/git/ref/heads/" in url:
+                    return {"object": {"sha": FIXTURE_SHA}}
+                if "/actions/runs/" in url and "/artifacts" not in url:
+                    return _valid_run()
+                if "/actions/runs/" in url and "/artifacts" in url:
+                    return {
+                        "artifacts": [
+                            {
+                                "name": "validation-evidence",
+                                "id": 1,
+                                "expired": False,
+                                "archive_download_url": "https://example.invalid/evidence.zip",
+                            },
+                            {
+                                "name": "addon-package",
+                                "id": 2,
+                                "expired": False,
+                                "archive_download_url": "https://example.invalid/package.zip",
+                            },
+                        ]
+                    }
+                raise RuntimeError(f"Unexpected URL: {url}")
+
+            def download_side_effect(url, dest):
+                if "evidence" in url:
+                    shutil.copy2(evidence_archive, dest)
+                elif "package" in url:
+                    shutil.copy2(package_archive, dest)
+
+            target_api_mock = mock.MagicMock()
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "SOURCE_GITHUB_TOKEN": "source-tok-abc",
+                        "GITHUB_TOKEN": "target-tok-xyz",
+                    },
+                    clear=False,
+                ),
+                mock.patch.object(
+                    builder, "source_github_api_get", side_effect=api_get_side_effect
+                ),
+                mock.patch.object(
+                    builder, "source_download_file", side_effect=download_side_effect
+                ),
+                mock.patch.object(
+                    builder, "github_api_get", side_effect=target_api_mock
+                ),
+                mock.patch.object(builder, "ADDONS", [self._target_addon_config]),
+            ):
+                builder.build_immutable_repository(_valid_dispatch(), root)
+
+            target_api_mock.assert_not_called()
+
+    def test_source_token_is_not_used_for_unrelated_addon_downloads(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = _make_repo_root(tmpdir)
+            addon_zip = root / "addon.zip"
+            _make_addon_zip(addon_zip, FIXTURE_ADDON_ID, FIXTURE_VERSION)
+            evidence_archive = root / "evidence.zip"
+            package_archive = root / "package.zip"
+            evidence = _valid_evidence(artifact_sha256=_zip_sha256(addon_zip))
+            _make_evidence_archive(evidence, evidence_archive)
+            _make_package_archive(addon_zip, package_archive)
+
+            other_addon_id = "plugin.other"
+            other_version = "1.0.0"
+            other_filename = f"{other_addon_id}-{other_version}.zip"
+            other_archive = root / other_filename
+            _make_addon_zip(other_archive, other_addon_id, other_version)
+            other_url = f"https://example.invalid/{other_filename}"
+
+            api_get, _download = _make_mock_api_responses(
+                evidence_archive, package_archive
+            )
+            source_download_urls = []
+            generic_download_urls = []
+            release_lookup = mock.MagicMock(
+                return_value=(other_url, other_version, other_filename)
+            )
+
+            def source_download(url, dest):
+                source_download_urls.append(url)
+                if "evidence" in url:
+                    shutil.copy2(evidence_archive, dest)
+                elif "package" in url:
+                    shutil.copy2(package_archive, dest)
+                else:
+                    shutil.copy2(other_archive, dest)
+
+            def generic_download(url, dest):
+                generic_download_urls.append(url)
+                shutil.copy2(other_archive, dest)
+
+            addons = [
+                self._target_addon_config,
+                {
+                    "owner": "Example",
+                    "repo": other_addon_id,
+                    "addon_id": other_addon_id,
+                    "branch": "main",
+                },
+            ]
+            with (
+                mock.patch.dict(
+                    os.environ, {"SOURCE_GITHUB_TOKEN": "source-tok-abc"}, clear=True
+                ),
+                mock.patch.object(
+                    builder, "source_github_api_get", side_effect=api_get
+                ),
+                mock.patch.object(
+                    builder, "source_download_file", side_effect=source_download
+                ),
+                mock.patch.object(
+                    builder, "download_file", side_effect=generic_download
+                ),
+                mock.patch.object(
+                    builder,
+                    "get_latest_release_zip",
+                    release_lookup,
+                ),
+                mock.patch.object(builder, "ADDONS", addons),
+            ):
+                builder.build_immutable_repository(_valid_dispatch(), root)
+
+            self.assertEqual(
+                source_download_urls,
+                [
+                    "https://example.invalid/evidence.zip",
+                    "https://example.invalid/package.zip",
+                ],
+            )
+            self.assertEqual(generic_download_urls, [other_url])
+            release_lookup.assert_called_once_with(
+                "Example", other_addon_id, other_addon_id
+            )
+
+    def test_source_token_401_fails_closed_with_sanitized_error(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = _make_repo_root(tmpdir)
+            error_401 = urllib.error.HTTPError(
+                "https://api.github.com/repos/test/repo/actions/runs/123",
+                401,
+                "Unauthorized",
+                {},
+                None,
+            )
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {"SOURCE_GITHUB_TOKEN": "secret-source-tok"},
+                    clear=False,
+                ),
+                mock.patch("urllib.request.urlopen", side_effect=error_401),
+                mock.patch.object(builder, "ADDONS", [self._target_addon_config]),
+                self.assertRaises(RuntimeError) as ctx,
+            ):
+                builder.build_immutable_repository(_valid_dispatch(), root)
+            error_msg = str(ctx.exception)
+            self.assertNotIn("secret-source-tok", error_msg)
+            self.assertIn("401", error_msg)
+
+    def test_source_token_403_fails_closed_with_sanitized_error(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = _make_repo_root(tmpdir)
+            error_403 = urllib.error.HTTPError(
+                "https://api.github.com/repos/test/repo/actions/runs/123",
+                403,
+                "Forbidden",
+                {},
+                None,
+            )
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {"SOURCE_GITHUB_TOKEN": "secret-source-tok"},
+                    clear=False,
+                ),
+                mock.patch("urllib.request.urlopen", side_effect=error_403),
+                mock.patch.object(builder, "ADDONS", [self._target_addon_config]),
+                self.assertRaises(RuntimeError) as ctx,
+            ):
+                builder.build_immutable_repository(_valid_dispatch(), root)
+            error_msg = str(ctx.exception)
+            self.assertNotIn("secret-source-tok", error_msg)
+            self.assertIn("403", error_msg)
+
+    def test_source_download_401_fails_closed_with_sanitized_error(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            error_401 = urllib.error.HTTPError(
+                "https://example.invalid/evidence.zip",
+                401,
+                "Unauthorized",
+                {},
+                None,
+            )
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {"SOURCE_GITHUB_TOKEN": "secret-source-tok"},
+                    clear=False,
+                ),
+                mock.patch("urllib.request.urlopen", side_effect=error_401),
+                self.assertRaises(RuntimeError) as ctx,
+            ):
+                builder.source_download_file(
+                    "https://example.invalid/evidence.zip",
+                    Path(tmpdir) / "out.zip",
+                )
+            error_msg = str(ctx.exception)
+            self.assertNotIn("secret-source-tok", error_msg)
+            self.assertIn("401", error_msg)
+
+    def test_source_download_403_fails_closed_with_sanitized_error(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            error_403 = urllib.error.HTTPError(
+                "https://example.invalid/package.zip",
+                403,
+                "Forbidden",
+                {},
+                None,
+            )
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {"SOURCE_GITHUB_TOKEN": "secret-source-tok"},
+                    clear=False,
+                ),
+                mock.patch("urllib.request.urlopen", side_effect=error_403),
+                self.assertRaises(RuntimeError) as ctx,
+            ):
+                builder.source_download_file(
+                    "https://example.invalid/package.zip",
+                    Path(tmpdir) / "out.zip",
+                )
+            error_msg = str(ctx.exception)
+            self.assertNotIn("secret-source-tok", error_msg)
+            self.assertIn("403", error_msg)
+
+
 class TestImmutablePublicationWorkflows(unittest.TestCase):
     def test_repository_workflow_accepts_only_validated_publications(self):
         workflow = (
@@ -1144,6 +1571,23 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
             workflow,
         )
         self.assertNotIn("workflow_run.head_branch == 'main'", workflow)
+
+    def test_workflow_maps_source_artifact_token_separately(self):
+        workflow = (
+            Path(__file__).parents[1] / ".github/workflows/update-repository.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("SOURCE_GITHUB_TOKEN", workflow)
+        self.assertIn("SOURCE_ARTIFACT_TOKEN", workflow)
+        self.assertIn("${{ secrets.SOURCE_ARTIFACT_TOKEN }}", workflow)
+
+    def test_source_token_not_in_dispatch_payload(self):
+        notify = (
+            Path(__file__).parents[1] / "addon-workflow-templates/notify-repository.yml"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("SOURCE_GITHUB_TOKEN", notify)
+        self.assertNotIn("SOURCE_ARTIFACT_TOKEN", notify)
+        self.assertNotIn("source_token", notify)
 
 
 if __name__ == "__main__":

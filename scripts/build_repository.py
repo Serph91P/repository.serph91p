@@ -91,6 +91,55 @@ def download_file(url, destination):
         shutil.copyfileobj(response, output)
 
 
+def get_source_token():
+    """Return the source-artifact token or raise before any source request."""
+    token = (os.environ.get("SOURCE_GITHUB_TOKEN") or "").strip()
+    if not token:
+        raise RuntimeError(
+            "SOURCE_GITHUB_TOKEN is required for cross-repository source access "
+            "but is missing or empty"
+        )
+    return token
+
+
+def source_github_api_get(url):
+    """Make a GitHub API request using the source-artifact credential."""
+    token = get_source_token()
+    request = urllib.request.Request(url)
+    request.add_header("Authorization", f"token {token}")
+    request.add_header("Accept", "application/vnd.github.v3+json")
+    try:
+        with urllib.request.urlopen(request) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        if error.code in (401, 403):
+            raise RuntimeError(
+                f"Source authorization rejected (HTTP {error.code}). "
+                f"Verify SOURCE_ARTIFACT_TOKEN grants access to the source repository"
+            ) from error
+        raise
+
+
+def source_download_file(url, destination):
+    """Download a file using the source-artifact credential."""
+    token = get_source_token()
+    request = urllib.request.Request(url)
+    request.add_header("Authorization", f"token {token}")
+    try:
+        with (
+            urllib.request.urlopen(request) as response,
+            open(destination, "wb") as output,
+        ):
+            shutil.copyfileobj(response, output)
+    except urllib.error.HTTPError as error:
+        if error.code in (401, 403):
+            raise RuntimeError(
+                f"Source authorization rejected (HTTP {error.code}). "
+                f"Verify SOURCE_ARTIFACT_TOKEN grants access to the source repository"
+            ) from error
+        raise
+
+
 def get_latest_release_zip(owner, repo, addon_id):
     """Return the one correctly named ZIP attached to the latest release."""
     releases_url = f"{GH_API}/repos/{quote(owner, safe='')}/{quote(repo, safe='')}"
@@ -806,6 +855,7 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
     print("=" * 60)
 
     validate_dispatch_payload(dispatch_payload)
+    get_source_token()
 
     source_repo = dispatch_payload["source_repo"]
     candidate_sha = dispatch_payload["candidate_sha"]
@@ -830,7 +880,7 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
         raise RuntimeError(
             f"source_repo {source_repo!r} is not in the configured ADDONS list"
         )
-    run_data = github_api_get(
+    run_data = source_github_api_get(
         f"{GH_API}/repos/{quote(source_repo, safe='/')}/actions/runs/"
         f"{validation_run_id}"
     )
@@ -841,10 +891,11 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
         validation_workflow,
         expected_branch,
     )
-    source_ref = github_api_get(
+    source_ref_url = (
         f"{GH_API}/repos/{quote(source_repo, safe='/')}/git/ref/heads/"
         f"{quote(expected_branch, safe='')}"
     )
+    source_ref = source_github_api_get(source_ref_url)
     current_sha = source_ref.get("object", {}).get("sha")
     if current_sha != candidate_sha:
         raise RuntimeError(
@@ -852,7 +903,7 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
             f"{current_sha!r} does not match candidate_sha {candidate_sha!r}"
         )
 
-    artifacts_data = github_api_get(
+    artifacts_data = source_github_api_get(
         f"{GH_API}/repos/{quote(source_repo, safe='/')}/actions/runs/"
         f"{validation_run_id}/artifacts"
     )
@@ -900,8 +951,10 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
         evidence_archive = temp_dir / "evidence.zip"
         package_archive = temp_dir / "package.zip"
 
-        download_file(evidence_artifact["archive_download_url"], evidence_archive)
-        download_file(package_artifact["archive_download_url"], package_archive)
+        source_download_file(
+            evidence_artifact["archive_download_url"], evidence_archive
+        )
+        source_download_file(package_artifact["archive_download_url"], package_archive)
 
         with zipfile.ZipFile(evidence_archive, "r") as zf:
             evidence_members = [m for m in zf.namelist() if not m.endswith("/")]
@@ -1012,6 +1065,15 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
         finally:
             if temp_dir.exists():
                 shutil.rmtree(temp_dir)
+
+        source_ref = source_github_api_get(source_ref_url)
+        current_sha = source_ref.get("object", {}).get("sha")
+        if current_sha != candidate_sha:
+            raise RuntimeError(
+                f"Expected branch {expected_branch!r} moved before promotion: "
+                f"current SHA {current_sha!r} does not match candidate_sha "
+                f"{candidate_sha!r}"
+            )
 
         promote_repository_outputs(staging, repo_root / "repo", repo_root / "_site")
         staging.rmdir()

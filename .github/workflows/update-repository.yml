@@ -28,6 +28,7 @@ jobs:
       - name: Build repository
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_GITHUB_TOKEN: ${{ secrets.SOURCE_ARTIFACT_TOKEN }}
           DISPATCH_PAYLOAD: ${{ github.event.client_payload && toJSON(github.event.client_payload) || '' }}
         run: python scripts/build_repository.py
 
