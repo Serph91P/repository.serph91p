@@ -110,10 +110,6 @@ def _check_version_monotonicity(repo_root, addon_id, candidate_version):
                 f"{addon.tag!r}"
             )
         if addon.get("id") == addon_id:
-            if len(addon):
-                raise RuntimeError(
-                    f"Existing addon {addon_id} in {manifest_path} has unexpected child elements"
-                )
             current_version = addon.get("version")
             if not current_version:
                 raise RuntimeError(

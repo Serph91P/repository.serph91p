@@ -1193,7 +1193,43 @@ class TestBuildImmutableRepository(unittest.TestCase):
             self.assertEqual(_snapshot_tree(repo), repo_before)
             self.assertEqual(_snapshot_tree(site), site_before)
 
-    def test_unexpected_child_after_matching_addon_is_rejected(self):
+    def test_matching_addon_with_legitimate_nested_children_is_accepted(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            repo = root / "repo"
+            site = root / "_site"
+            repo.mkdir()
+            site.mkdir()
+            existing_addon_xml = (
+                "<addons>"
+                '<addon id="plugin.video.twitch" name="Twitch" version="3.1.8" '
+                'provider-name="test">'
+                "<requires>"
+                '<import addon="xbmc.python" version="3.0.0"/>'
+                "</requires>"
+                '<extension point="xbmc.addon.metadata">'
+                "<summary>Twitch</summary>"
+                "</extension>"
+                "</addon>"
+                "</addons>"
+            )
+            existing_manifest_bytes = existing_addon_xml.encode("utf-8")
+            (repo / "addons.xml").write_bytes(existing_manifest_bytes)
+            checksum = hashlib.md5(existing_manifest_bytes).hexdigest()
+            (repo / "addons.xml.md5").write_text(checksum, encoding="utf-8")
+            (site / "addons.xml").write_bytes(existing_manifest_bytes)
+            (site / "addons.xml.md5").write_text(checksum, encoding="utf-8")
+            (repo / "sentinel.txt").write_bytes(b"keep-repo")
+            (site / "sentinel.txt").write_bytes(b"keep-site")
+            repo_before = _snapshot_tree(repo)
+            site_before = _snapshot_tree(site)
+
+            builder._check_version_monotonicity(root, FIXTURE_ADDON_ID, FIXTURE_VERSION)
+
+            self.assertEqual(_snapshot_tree(repo), repo_before)
+            self.assertEqual(_snapshot_tree(site), site_before)
+
+    def test_root_unexpected_element_after_matching_addon_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             repo = root / "repo"
@@ -1203,7 +1239,8 @@ class TestBuildImmutableRepository(unittest.TestCase):
             existing_addon_xml = (
                 "<addons>"
                 '<addon id="plugin.video.twitch" name="Twitch" version="3.1.10" '
-                'provider-name="test"><unexpected-child/></addon>'
+                'provider-name="test"/>'
+                "<unexpected-root/>"
                 "</addons>"
             )
             existing_manifest_bytes = existing_addon_xml.encode("utf-8")
@@ -1300,40 +1337,6 @@ class TestBuildImmutableRepository(unittest.TestCase):
             self.assertIn("plugin.video.twitch", error)
             self.assertIn("3.1.7", error)
             self.assertIn("3.1.10", error)
-            self.assertEqual(_snapshot_tree(repo), repo_before)
-            self.assertEqual(_snapshot_tree(site), site_before)
-
-    def test_unexpected_child_before_matching_addon_is_rejected(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            repo = root / "repo"
-            site = root / "_site"
-            repo.mkdir()
-            site.mkdir()
-            existing_addon_xml = (
-                "<addons>"
-                '<addon id="plugin.other" name="Other" version="1.0.0" '
-                'provider-name="test"><unexpected-child/></addon>'
-                '<addon id="plugin.video.twitch" name="Twitch" version="3.1.10" '
-                'provider-name="test"/>'
-                "</addons>"
-            )
-            existing_manifest_bytes = existing_addon_xml.encode("utf-8")
-            (repo / "addons.xml").write_bytes(existing_manifest_bytes)
-            checksum = hashlib.md5(existing_manifest_bytes).hexdigest()
-            (repo / "addons.xml.md5").write_text(checksum, encoding="utf-8")
-            (site / "addons.xml").write_bytes(existing_manifest_bytes)
-            (site / "addons.xml.md5").write_text(checksum, encoding="utf-8")
-            (repo / "sentinel.txt").write_bytes(b"keep-repo")
-            (site / "sentinel.txt").write_bytes(b"keep-site")
-            repo_before = _snapshot_tree(repo)
-            site_before = _snapshot_tree(site)
-
-            with self.assertRaises(RuntimeError):
-                builder._check_version_monotonicity(
-                    root, FIXTURE_ADDON_ID, FIXTURE_VERSION
-                )
-
             self.assertEqual(_snapshot_tree(repo), repo_before)
             self.assertEqual(_snapshot_tree(site), site_before)
 
