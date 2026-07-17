@@ -60,6 +60,78 @@ ADDONS = [
     },
 ]
 
+
+def _parse_kodi_version(version_string):
+    """Parse a dotted numeric addon version into a comparable tuple of ints.
+
+    Fails closed if the string is empty or any segment is not a non-negative
+    integer.
+    """
+    if not version_string or not isinstance(version_string, str):
+        raise RuntimeError(f"Invalid addon version: {version_string!r}")
+    parts = version_string.split(".")
+    parsed = []
+    for part in parts:
+        if not part or not part.isascii() or not part.isdigit():
+            raise RuntimeError(f"Invalid addon version segment in {version_string!r}")
+        parsed.append(int(part))
+    if not parsed:
+        raise RuntimeError(f"Invalid addon version: {version_string!r}")
+    return tuple(parsed)
+
+
+def _check_version_monotonicity(repo_root, addon_id, candidate_version):
+    """Reject a candidate version lower than the currently published version.
+
+    Reads the existing repo addons.xml, finds the current version for addon_id,
+    and ensures candidate >= current. Equal versions are permitted because
+    rerunning an immutable candidate may be needed. Fails closed if the
+    manifest is missing, unparseable, or the existing version is invalid.
+    Rejects duplicate addon ids as ambiguous.
+    """
+    manifest_path = repo_root / "repo" / "addons.xml"
+    if not manifest_path.is_file():
+        return
+    try:
+        root = ET.parse(manifest_path).getroot()
+    except (OSError, ET.ParseError) as error:
+        raise RuntimeError(
+            f"Cannot parse existing manifest {manifest_path} for version check: {error}"
+        ) from error
+    if root.tag != "addons":
+        raise RuntimeError(
+            f"Existing manifest {manifest_path} has unexpected root {root.tag!r}"
+        )
+    matching_versions = []
+    for addon in root:
+        if addon.tag != "addon":
+            raise RuntimeError(
+                f"Existing manifest {manifest_path} has unexpected element "
+                f"{addon.tag!r}"
+            )
+        if addon.get("id") == addon_id:
+            current_version = addon.get("version")
+            if not current_version:
+                raise RuntimeError(
+                    f"Existing addon {addon_id} in {manifest_path} has no version"
+                )
+            matching_versions.append(current_version)
+    if not matching_versions:
+        return
+    if len(matching_versions) > 1:
+        raise RuntimeError(
+            f"Existing manifest {manifest_path} contains duplicate addon {addon_id!r}: "
+            f"versions {matching_versions}"
+        )
+    candidate_tuple = _parse_kodi_version(candidate_version)
+    current_tuple = _parse_kodi_version(matching_versions[0])
+    if candidate_tuple < current_tuple:
+        raise RuntimeError(
+            f"Rejecting {addon_id} version {candidate_version}: "
+            f"currently published version {matching_versions[0]} is newer"
+        )
+
+
 REPO_ADDON_ID = "repository.serph91p"
 SCRIPT_DIR = Path(__file__).parent
 REPO_ROOT = SCRIPT_DIR.parent
@@ -89,6 +161,79 @@ def download_file(url, destination):
         request.add_header("Authorization", f"token {token}")
     with urllib.request.urlopen(request) as response, open(destination, "wb") as output:
         shutil.copyfileobj(response, output)
+
+
+def get_source_token():
+    """Return the source-artifact token or raise before any source request."""
+    token = (os.environ.get("SOURCE_GITHUB_TOKEN") or "").strip()
+    if not token:
+        raise RuntimeError(
+            "SOURCE_GITHUB_TOKEN is required for cross-repository source access "
+            "but is missing or empty"
+        )
+    return token
+
+
+def source_github_api_get(url):
+    """Make a GitHub API request using the source-artifact credential."""
+    token = get_source_token()
+    request = urllib.request.Request(url)
+    request.add_header("Authorization", f"token {token}")
+    request.add_header("Accept", "application/vnd.github.v3+json")
+    try:
+        with urllib.request.urlopen(request) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        if error.code in (401, 403):
+            raise RuntimeError(
+                f"Source authorization rejected (HTTP {error.code}). "
+                f"Verify SOURCE_ARTIFACT_TOKEN grants access to the source repository"
+            ) from error
+        raise
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Strip Authorization on cross-origin redirects."""
+
+    _DEFAULT_PORTS = {"http": 80, "https": 443}
+
+    def _effective_origin(self, parsed):
+        port = parsed.port
+        if port is None:
+            port = self._DEFAULT_PORTS.get(parsed.scheme.lower())
+        return (parsed.scheme.lower(), parsed.hostname, port)
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        orig_parts = urlsplit(req.full_url)
+        orig_origin = self._effective_origin(orig_parts)
+        new_origin = self._effective_origin(urlsplit(newurl))
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected is not None and new_origin != orig_origin:
+            redirected.remove_header("Authorization")
+        return redirected
+
+
+_source_opener = urllib.request.build_opener(_SafeRedirectHandler)
+
+
+def source_download_file(url, destination):
+    """Download a file using the source-artifact credential."""
+    token = get_source_token()
+    request = urllib.request.Request(url)
+    request.add_header("Authorization", f"token {token}")
+    try:
+        with (
+            _source_opener.open(request) as response,
+            open(destination, "wb") as output,
+        ):
+            shutil.copyfileobj(response, output)
+    except urllib.error.HTTPError as error:
+        if error.code in (401, 403):
+            raise RuntimeError(
+                f"Source authorization rejected (HTTP {error.code}). "
+                f"Verify SOURCE_ARTIFACT_TOKEN grants access to the source repository"
+            ) from error
+        raise
 
 
 def get_latest_release_zip(owner, repo, addon_id):
@@ -459,8 +604,9 @@ def validate_site_manifest(site_output=SITE_OUTPUT):
         raise RuntimeError("Generated addons.xml.md5 does not match addons.xml")
 
 
-def _create_repository_package():
-    addon_xml_path = REPO_ROOT / "addon.xml"
+def _create_repository_package_in(repo_root, temp_dir):
+    """Create the repository addon package, parameterized for test isolation."""
+    addon_xml_path = repo_root / "addon.xml"
     if not addon_xml_path.is_file():
         raise RuntimeError(f"Missing repository metadata: {addon_xml_path}")
     try:
@@ -470,19 +616,582 @@ def _create_repository_package():
     if root.get("id") != REPO_ADDON_ID or not root.get("version"):
         raise RuntimeError("Repository addon.xml has an invalid id or version")
     version = root.get("version")
-    package_dir = TEMP_DIR / REPO_ADDON_ID
-    package_dir.mkdir(parents=True)
+    package_dir = temp_dir / REPO_ADDON_ID
+    package_dir.mkdir(parents=True, exist_ok=True)
     package_path = package_dir / f"{REPO_ADDON_ID}-{version}.zip"
     with zipfile.ZipFile(package_path, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.write(addon_xml_path, f"{REPO_ADDON_ID}/addon.xml")
-        resources_dir = REPO_ROOT / "resources"
+        resources_dir = repo_root / "resources"
         if resources_dir.exists():
             for item in sorted(resources_dir.rglob("*")):
                 if item.is_file():
                     archive.write(
-                        item, f"{REPO_ADDON_ID}/{item.relative_to(REPO_ROOT)}"
+                        item, f"{REPO_ADDON_ID}/{item.relative_to(repo_root)}"
                     )
     return package_path, version
+
+
+def _create_repository_package():
+    return _create_repository_package_in(REPO_ROOT, TEMP_DIR)
+
+
+def validate_dispatch_payload(payload):
+    """Validate the shape and types of a repository dispatch payload."""
+    if not isinstance(payload, dict):
+        raise RuntimeError("Dispatch payload must be a JSON object")
+    allowed_fields = {
+        "source_repo",
+        "candidate_sha",
+        "validation_run_id",
+        "validation_head_sha",
+        "validation_workflow",
+        "expected_branch",
+        "package_artifact_name",
+        "evidence_artifact_name",
+    }
+    unknown = set(payload.keys()) - allowed_fields
+    if unknown:
+        raise RuntimeError(
+            f"Dispatch payload contains unknown fields: {sorted(unknown)}"
+        )
+    source_repo = payload.get("source_repo")
+    if not source_repo or not isinstance(source_repo, str) or "/" not in source_repo:
+        raise RuntimeError(
+            "Dispatch payload must contain a valid source_repo (owner/repo)"
+        )
+    candidate_sha = payload.get("candidate_sha")
+    if (
+        not candidate_sha
+        or not isinstance(candidate_sha, str)
+        or len(candidate_sha) != 40
+    ):
+        raise RuntimeError(
+            f"Dispatch candidate_sha must be a 40-character hex SHA: {candidate_sha!r}"
+        )
+    if not all(c in "0123456789abcdef" for c in candidate_sha):
+        raise RuntimeError(f"Dispatch candidate_sha must be hex: {candidate_sha!r}")
+    validation_run_id = payload.get("validation_run_id")
+    if not isinstance(validation_run_id, int) or validation_run_id <= 0:
+        raise RuntimeError(
+            f"Dispatch validation_run_id must be a positive integer: "
+            f"{validation_run_id!r}"
+        )
+    validation_head_sha = payload.get("validation_head_sha")
+    if (
+        not validation_head_sha
+        or not isinstance(validation_head_sha, str)
+        or len(validation_head_sha) != 40
+    ):
+        raise RuntimeError(
+            f"Dispatch validation_head_sha must be a 40-character hex SHA: "
+            f"{validation_head_sha!r}"
+        )
+    if not all(c in "0123456789abcdef" for c in validation_head_sha):
+        raise RuntimeError(
+            f"Dispatch validation_head_sha must be hex: {validation_head_sha!r}"
+        )
+    validation_workflow = payload.get("validation_workflow")
+    if not validation_workflow or not isinstance(validation_workflow, str):
+        raise RuntimeError("Dispatch validation_workflow must be a non-empty string")
+    expected_branch = payload.get("expected_branch")
+    if not expected_branch or not isinstance(expected_branch, str):
+        raise RuntimeError("Dispatch expected_branch must be a non-empty string")
+
+
+def validate_immutable_evidence(
+    evidence, candidate_sha, validation_run_id, validation_head_sha
+):
+    """Validate evidence JSON against the immutable publication contract."""
+    if not isinstance(evidence, dict):
+        raise RuntimeError("Validation evidence must be a JSON object")
+    required_fields = (
+        "candidate_sha",
+        "validation_head_sha",
+        "validation_run_id",
+        "addon_id",
+        "addon_version",
+        "publication_id",
+        "artifact_sha256",
+        "asset_name",
+    )
+    for field in required_fields:
+        if field not in evidence:
+            raise RuntimeError(
+                f"Validation evidence is missing required field: {field}"
+            )
+    evidence_run_id = evidence["validation_run_id"]
+    try:
+        evidence_run_id = int(evidence_run_id)
+    except (TypeError, ValueError):
+        raise RuntimeError(
+            f"Evidence validation_run_id {evidence_run_id!r} is not a valid integer"
+        )
+    if evidence_run_id != int(validation_run_id):
+        raise RuntimeError(
+            f"Evidence validation_run_id {evidence_run_id} does not "
+            f"match dispatch validation_run_id {int(validation_run_id)}"
+        )
+    if evidence["candidate_sha"] != candidate_sha:
+        raise RuntimeError(
+            f"Evidence candidate_sha {evidence['candidate_sha']!r} does not match "
+            f"dispatch candidate_sha {candidate_sha!r}"
+        )
+    if evidence["validation_head_sha"] != validation_head_sha:
+        raise RuntimeError(
+            f"Evidence validation_head_sha {evidence['validation_head_sha']!r} "
+            f"does not match dispatch validation_head_sha {validation_head_sha!r}"
+        )
+    candidate = evidence["candidate_sha"]
+    if (
+        not isinstance(candidate, str)
+        or len(candidate) != 40
+        or not all(c in "0123456789abcdef" for c in candidate)
+    ):
+        raise RuntimeError(
+            f"candidate_sha must be a 40-character hex SHA: {candidate!r}"
+        )
+    addon_id = evidence["addon_id"]
+    addon_version = evidence["addon_version"]
+    if not addon_id or not isinstance(addon_id, str):
+        raise RuntimeError("Evidence addon_id must be a non-empty string")
+    if not addon_version or not isinstance(addon_version, str):
+        raise RuntimeError("Evidence addon_version must be a non-empty string")
+    expected_pub = f"{addon_id}@{addon_version}"
+    if evidence["publication_id"] != expected_pub:
+        raise RuntimeError(
+            f"Evidence publication_id {evidence['publication_id']!r} does not match "
+            f"expected {expected_pub!r}"
+        )
+
+
+def validate_github_run(
+    run_data,
+    validation_run_id,
+    validation_head_sha,
+    validation_workflow,
+    expected_branch,
+):
+    """Validate a GitHub Actions run response against dispatch fields."""
+    if not isinstance(run_data, dict):
+        raise RuntimeError("GitHub run data must be a JSON object")
+    if run_data.get("id") != int(validation_run_id):
+        raise RuntimeError(
+            f"Run ID {run_data.get('id')!r} does not match dispatch "
+            f"validation_run_id {int(validation_run_id)!r}"
+        )
+    if run_data.get("head_sha") != validation_head_sha:
+        raise RuntimeError(
+            f"Run head_sha {run_data.get('head_sha')!r} does not match dispatch "
+            f"validation_head_sha {validation_head_sha!r}"
+        )
+    if run_data.get("name") != validation_workflow:
+        raise RuntimeError(
+            f"Run workflow name {run_data.get('name')!r} does not match dispatch "
+            f"validation_workflow {validation_workflow!r}"
+        )
+    if run_data.get("head_branch") != expected_branch:
+        raise RuntimeError(
+            f"Run head_branch {run_data.get('head_branch')!r} does not match "
+            f"dispatch expected_branch {expected_branch!r}"
+        )
+    if run_data.get("conclusion") != "success":
+        raise RuntimeError(
+            f"Run conclusion {run_data.get('conclusion')!r} is not 'success'"
+        )
+
+
+def verify_package_sha256(zip_path, expected_sha256):
+    """Verify that a downloaded ZIP matches the expected SHA-256."""
+    actual = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+    if actual != expected_sha256:
+        raise RuntimeError(
+            f"Package SHA-256 {actual!r} does not match expected {expected_sha256!r}"
+        )
+
+
+def validate_archive_topology(zip_path, addon_id, addon_version):
+    """Validate archive member structure, addon.xml identity, and compression type."""
+    _validated_filename_component(addon_id, "addon ID")
+    _validated_filename_component(addon_version, "addon version")
+    try:
+        with zipfile.ZipFile(zip_path, "r") as archive:
+            addon_xml_path = None
+            canonical_names = set()
+            for info in archive.infolist():
+                name = info.filename
+                relative_name = (
+                    name[:-1] if info.is_dir() and name.endswith("/") else name
+                )
+                path = _validated_relative_path(relative_name, "archive member")
+                file_type = (info.external_attr >> 16) & 0o170000
+                expected_types = (0, 0o040000) if info.is_dir() else (0, 0o100000)
+                if file_type not in expected_types:
+                    raise RuntimeError(
+                        f"Unsupported release archive member type: {name!r}"
+                    )
+                if path.parts[0] != addon_id:
+                    raise RuntimeError(f"Archive member has wrong root: {name!r}")
+                canonical_name = relative_name.casefold()
+                if canonical_name in canonical_names:
+                    raise RuntimeError(f"Duplicate archive member: {name!r}")
+                canonical_names.add(canonical_name)
+                if not info.is_dir() and info.compress_type != zipfile.ZIP_DEFLATED:
+                    raise RuntimeError(
+                        f"Archive member {name!r} uses compression type "
+                        f"{info.compress_type}, expected deflate (8)"
+                    )
+                if path.name.casefold() == "addon.xml" and len(path.parts) == 2:
+                    addon_xml_path = relative_name
+            if addon_xml_path is None:
+                raise RuntimeError(f"Archive is missing root {addon_id}/addon.xml")
+            try:
+                addon = ET.fromstring(archive.read(addon_xml_path))
+            except ET.ParseError as error:
+                raise RuntimeError(f"Invalid {addon_xml_path}: {error}") from error
+            if addon.tag != "addon":
+                raise RuntimeError(f"Root element in {addon_xml_path} must be 'addon'")
+            embedded_id = addon.get("id")
+            embedded_version = addon.get("version")
+            if embedded_id != addon_id:
+                raise RuntimeError(
+                    f"Evidence addon_id {addon_id!r} does not match embedded ID "
+                    f"{embedded_id!r}"
+                )
+            if embedded_version != addon_version:
+                raise RuntimeError(
+                    f"Evidence addon_version {addon_version!r} does not match "
+                    f"embedded version {embedded_version!r}"
+                )
+            for info in archive.infolist():
+                if not info.is_dir():
+                    archive.read(info)
+    except zipfile.BadZipFile as error:
+        raise RuntimeError(f"Invalid ZIP archive: {error}") from error
+
+
+def publish_validated_addon(addon_zip_path, asset_name, repository_output):
+    """Copy a validated addon ZIP and return its parsed addon element."""
+    _validated_filename_component(asset_name, "asset name")
+    with zipfile.ZipFile(addon_zip_path, "r") as archive:
+        addon_id = None
+        addon_xml_path = None
+        for info in archive.infolist():
+            if info.is_dir():
+                continue
+            name = info.filename
+            parts = name.rstrip("/").split("/")
+            if len(parts) == 2 and parts[1].lower() == "addon.xml":
+                if addon_xml_path is not None:
+                    raise RuntimeError("Multiple root addon.xml files found")
+                addon_xml_path = name
+                addon_id = parts[0]
+        if addon_xml_path is None:
+            raise RuntimeError("Addon ZIP is missing root addon.xml")
+        try:
+            addon = ET.fromstring(archive.read(addon_xml_path))
+        except ET.ParseError as error:
+            raise RuntimeError(f"Invalid {addon_xml_path}: {error}") from error
+        addon_dir = repository_output / addon_id
+        addon_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(addon_zip_path, addon_dir / asset_name)
+        for relative_asset in _local_asset_paths(addon):
+            member_name = f"{addon_id}/{relative_asset.as_posix()}"
+            for info in archive.infolist():
+                if info.filename == member_name and not info.is_dir():
+                    destination = addon_dir.joinpath(*relative_asset.parts)
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    with (
+                        archive.open(info) as source,
+                        open(destination, "wb") as output,
+                    ):
+                        shutil.copyfileobj(source, output)
+                    break
+            else:
+                raise RuntimeError(
+                    f"Addon ZIP is missing local asset {relative_asset.as_posix()!r}"
+                )
+    return addon
+
+
+def promote_repository_outputs(staging, repo_output, site_output):
+    """Promote staged outputs and restore both previous trees on failure."""
+    outputs = (
+        (staging / "repo", repo_output, staging / "_previous_repo"),
+        (staging / "_site", site_output, staging / "_previous_site"),
+    )
+    backed_up = []
+    promoted = []
+    try:
+        for _source, destination, backup in outputs:
+            if destination.exists():
+                os.replace(destination, backup)
+                backed_up.append((destination, backup))
+        for source, destination, _backup in outputs:
+            os.replace(source, destination)
+            promoted.append(destination)
+    except BaseException:
+        for destination in reversed(promoted):
+            if destination.exists():
+                shutil.rmtree(destination)
+        for destination, backup in reversed(backed_up):
+            if backup.exists():
+                os.replace(backup, destination)
+        raise
+    for _destination, backup in backed_up:
+        if backup.exists():
+            shutil.rmtree(backup)
+
+
+def build_immutable_repository(dispatch_payload, repo_root=None):
+    """Build the repository from an immutable validated dispatch payload."""
+    if repo_root is None:
+        repo_root = REPO_ROOT
+    print("=" * 60)
+    print("Building Serph91P Kodi Repository (immutable)")
+    print("=" * 60)
+
+    validate_dispatch_payload(dispatch_payload)
+    get_source_token()
+
+    source_repo = dispatch_payload["source_repo"]
+    candidate_sha = dispatch_payload["candidate_sha"]
+    validation_run_id = dispatch_payload["validation_run_id"]
+    validation_head_sha = dispatch_payload["validation_head_sha"]
+    validation_workflow = dispatch_payload["validation_workflow"]
+    expected_branch = dispatch_payload["expected_branch"]
+    package_artifact_name = dispatch_payload.get(
+        "package_artifact_name", "addon-package"
+    )
+    evidence_artifact_name = dispatch_payload.get(
+        "evidence_artifact_name", "validation-evidence"
+    )
+
+    source_config = None
+    for config in ADDONS:
+        config_repo = f"{config['owner']}/{config['repo']}"
+        if config_repo == source_repo:
+            source_config = config
+            break
+    if source_config is None:
+        raise RuntimeError(
+            f"source_repo {source_repo!r} is not in the configured ADDONS list"
+        )
+    run_data = source_github_api_get(
+        f"{GH_API}/repos/{quote(source_repo, safe='/')}/actions/runs/"
+        f"{validation_run_id}"
+    )
+    validate_github_run(
+        run_data,
+        validation_run_id,
+        validation_head_sha,
+        validation_workflow,
+        expected_branch,
+    )
+    source_ref_url = (
+        f"{GH_API}/repos/{quote(source_repo, safe='/')}/git/ref/heads/"
+        f"{quote(expected_branch, safe='')}"
+    )
+    source_ref = source_github_api_get(source_ref_url)
+    current_sha = source_ref.get("object", {}).get("sha")
+    if current_sha != candidate_sha:
+        raise RuntimeError(
+            f"Expected branch {expected_branch!r} moved: current SHA "
+            f"{current_sha!r} does not match candidate_sha {candidate_sha!r}"
+        )
+
+    artifacts_data = source_github_api_get(
+        f"{GH_API}/repos/{quote(source_repo, safe='/')}/actions/runs/"
+        f"{validation_run_id}/artifacts"
+    )
+    evidence_artifacts = [
+        a
+        for a in artifacts_data.get("artifacts", [])
+        if a.get("name") == evidence_artifact_name
+    ]
+    package_artifacts = [
+        a
+        for a in artifacts_data.get("artifacts", [])
+        if a.get("name") == package_artifact_name
+    ]
+    if len(evidence_artifacts) != 1:
+        raise RuntimeError(
+            f"Expected exactly one '{evidence_artifact_name}' artifact, "
+            f"found {len(evidence_artifacts)}"
+        )
+    if len(package_artifacts) != 1:
+        raise RuntimeError(
+            f"Expected exactly one '{package_artifact_name}' artifact, "
+            f"found {len(package_artifacts)}"
+        )
+    evidence_artifact = evidence_artifacts[0]
+    package_artifact = package_artifacts[0]
+    if evidence_artifact.get("expired", False):
+        raise RuntimeError("Evidence artifact has expired")
+    if package_artifact.get("expired", False):
+        raise RuntimeError("Package artifact has expired")
+
+    temp_dir = repo_root / "_temp"
+    staging = repo_root / "_staging"
+    staging_repo = staging / "repo"
+    staging_site = staging / "_site"
+
+    for path in (staging, staging_repo, staging_site):
+        if path.exists():
+            shutil.rmtree(path)
+
+    try:
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        staging_repo.mkdir(parents=True)
+        staging_site.mkdir(parents=True)
+
+        evidence_archive = temp_dir / "evidence.zip"
+        package_archive = temp_dir / "package.zip"
+
+        source_download_file(
+            evidence_artifact["archive_download_url"], evidence_archive
+        )
+        source_download_file(package_artifact["archive_download_url"], package_archive)
+
+        with zipfile.ZipFile(evidence_archive, "r") as zf:
+            evidence_members = [m for m in zf.namelist() if not m.endswith("/")]
+            if evidence_members != ["validation-evidence.json"]:
+                raise RuntimeError(
+                    f"Evidence archive must contain exactly "
+                    f"'validation-evidence.json', found: {evidence_members}"
+                )
+            evidence = json.loads(zf.read("validation-evidence.json"))
+
+        validate_immutable_evidence(
+            evidence, candidate_sha, validation_run_id, validation_head_sha
+        )
+
+        addon_id = evidence["addon_id"]
+        addon_version = evidence["addon_version"]
+        asset_name = evidence["asset_name"]
+        expected_filename = f"{addon_id}-{addon_version}.zip"
+        if asset_name != expected_filename:
+            raise RuntimeError(
+                f"Evidence asset_name {asset_name!r} does not match "
+                f"expected {expected_filename!r}"
+            )
+        if addon_id != source_config["addon_id"]:
+            raise RuntimeError(
+                f"Evidence addon_id {addon_id!r} does not match configured addon "
+                f"{source_config['addon_id']!r} for {source_repo}"
+            )
+        if candidate_sha != run_data.get("head_sha"):
+            raise RuntimeError(
+                f"candidate_sha {candidate_sha!r} does not match "
+                f"run head_sha {run_data.get('head_sha')!r}"
+            )
+
+        _check_version_monotonicity(repo_root, addon_id, addon_version)
+
+        with zipfile.ZipFile(package_archive, "r") as zf:
+            package_members = [m for m in zf.namelist() if not m.endswith("/")]
+            if package_members != [asset_name]:
+                raise RuntimeError(
+                    f"Package archive must contain exactly {asset_name!r}, "
+                    f"found: {package_members}"
+                )
+            addon_zip_path = temp_dir / asset_name
+            with zf.open(asset_name) as src, open(addon_zip_path, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+
+        verify_package_sha256(addon_zip_path, evidence["artifact_sha256"])
+        validate_archive_topology(addon_zip_path, addon_id, addon_version)
+
+        published = []
+        try:
+            addon = publish_validated_addon(addon_zip_path, asset_name, staging_repo)
+            published.append(addon)
+            print(f"  Validated: {addon_id} v{addon_version}")
+
+            for config in ADDONS:
+                if config["addon_id"] == addon_id:
+                    continue
+                owner = config["owner"]
+                repo = config["repo"]
+                other_addon_id = config["addon_id"]
+                print(f"\nProcessing: {other_addon_id} ({owner}/{repo})")
+                release = get_latest_release_zip(owner, repo, other_addon_id)
+                other_download_dir = temp_dir / other_addon_id
+                other_download_dir.mkdir(parents=True)
+                if release is NO_RELEASE:
+                    branch = config["branch"]
+                    print(f"  No release found, building from source ({branch} branch)")
+                    source_zip = other_download_dir / "source.zip"
+                    download_file(_source_archive_url(owner, repo, branch), source_zip)
+                    zip_path, version, filename = create_source_package(
+                        source_zip, other_addon_id, other_download_dir
+                    )
+                else:
+                    release_url, version, filename = release
+                    print(f"  Found release: v{version} ({filename})")
+                    zip_path = other_download_dir / filename
+                    download_file(release_url, zip_path)
+                published.append(
+                    publish_release_zip(
+                        zip_path,
+                        other_addon_id,
+                        version,
+                        filename,
+                        staging_repo,
+                    )
+                )
+                print(f"  OK: v{version}")
+
+            print(f"\nProcessing: {REPO_ADDON_ID} (self)")
+            package_path, version = _create_repository_package_in(repo_root, temp_dir)
+            published.append(
+                publish_release_zip(
+                    package_path,
+                    REPO_ADDON_ID,
+                    version,
+                    package_path.name,
+                    staging_repo,
+                )
+            )
+            print(f"  OK: v{version}")
+
+            print("\nGenerating addons.xml...")
+            manifest = _write_addons_xml(published, staging_repo / "addons.xml")
+            checksum = hashlib.md5(manifest).hexdigest()
+            (staging_repo / "addons.xml.md5").write_text(checksum, encoding="utf-8")
+            create_pages_site(staging_repo, staging_site)
+            validate_site_manifest(staging_site)
+        finally:
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir)
+
+        source_ref = source_github_api_get(source_ref_url)
+        current_sha = source_ref.get("object", {}).get("sha")
+        if current_sha != candidate_sha:
+            raise RuntimeError(
+                f"Expected branch {expected_branch!r} moved before promotion: "
+                f"current SHA {current_sha!r} does not match candidate_sha "
+                f"{candidate_sha!r}"
+            )
+
+        promote_repository_outputs(staging, repo_root / "repo", repo_root / "_site")
+        staging.rmdir()
+
+        print(f"\n  addons.xml: {repo_root / 'repo' / 'addons.xml'}")
+        print(f"  addons.xml.md5: {checksum}")
+        print(f"  Pages site: {repo_root / '_site'}")
+        print("\n" + "=" * 60)
+        print("Repository built and validated successfully!")
+        print(f"Addons included: {len(published)}")
+        for addon in published:
+            print(f"  - {addon.get('id')}")
+        print("=" * 60)
+
+    except BaseException:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
 
 
 def build_repository():
@@ -576,7 +1285,12 @@ def main():
         validate_site_manifest()
         print(f"Validated generated site: {SITE_OUTPUT}")
     else:
-        build_repository()
+        dispatch_payload_json = os.environ.get("DISPATCH_PAYLOAD", "").strip()
+        if dispatch_payload_json:
+            dispatch_payload = json.loads(dispatch_payload_json)
+            build_immutable_repository(dispatch_payload)
+        else:
+            build_repository()
 
 
 if __name__ == "__main__":
