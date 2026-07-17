@@ -120,6 +120,30 @@ def source_github_api_get(url):
         raise
 
 
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Strip Authorization on cross-origin redirects."""
+
+    _DEFAULT_PORTS = {"http": 80, "https": 443}
+
+    def _effective_origin(self, parsed):
+        port = parsed.port
+        if port is None:
+            port = self._DEFAULT_PORTS.get(parsed.scheme.lower())
+        return (parsed.scheme.lower(), parsed.hostname, port)
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        orig_parts = urlsplit(req.full_url)
+        orig_origin = self._effective_origin(orig_parts)
+        new_origin = self._effective_origin(urlsplit(newurl))
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected is not None and new_origin != orig_origin:
+            redirected.remove_header("Authorization")
+        return redirected
+
+
+_source_opener = urllib.request.build_opener(_SafeRedirectHandler)
+
+
 def source_download_file(url, destination):
     """Download a file using the source-artifact credential."""
     token = get_source_token()
@@ -127,7 +151,7 @@ def source_download_file(url, destination):
     request.add_header("Authorization", f"token {token}")
     try:
         with (
-            urllib.request.urlopen(request) as response,
+            _source_opener.open(request) as response,
             open(destination, "wb") as output,
         ):
             shutil.copyfileobj(response, output)

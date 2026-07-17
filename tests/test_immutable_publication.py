@@ -4,9 +4,12 @@ import json
 import os
 import shutil
 import tempfile
+import threading
 import unittest
 import urllib.error
+import urllib.request
 import zipfile
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from unittest import mock
 
@@ -1259,10 +1262,17 @@ class TestSourceTokenIsolation(unittest.TestCase):
                 evidence_url: evidence_archive.read_bytes(),
                 package_url: package_archive.read_bytes(),
             }
-            captured_requests = []
+            captured_api_requests = []
+            captured_download_requests = []
 
-            def urlopen(request):
-                captured_requests.append(
+            def api_urlopen(request):
+                captured_api_requests.append(
+                    (request.full_url, request.get_header("Authorization"))
+                )
+                return io.BytesIO(responses[request.full_url])
+
+            def download_urlopen(request):
+                captured_download_requests.append(
                     (request.full_url, request.get_header("Authorization"))
                 )
                 return io.BytesIO(responses[request.full_url])
@@ -1276,23 +1286,32 @@ class TestSourceTokenIsolation(unittest.TestCase):
                     },
                     clear=True,
                 ),
-                mock.patch("urllib.request.urlopen", side_effect=urlopen),
+                mock.patch("urllib.request.urlopen", side_effect=api_urlopen),
+                mock.patch.object(
+                    builder._source_opener, "open", side_effect=download_urlopen
+                ),
                 mock.patch.object(builder, "ADDONS", [self._target_addon_config]),
             ):
                 builder.build_immutable_repository(_valid_dispatch(), root)
 
             self.assertEqual(
-                captured_requests,
+                captured_api_requests,
                 [
                     (run_url, "token source-tok-abc"),
                     (ref_url, "token source-tok-abc"),
                     (artifacts_url, "token source-tok-abc"),
-                    (evidence_url, "token source-tok-abc"),
-                    (package_url, "token source-tok-abc"),
                     (ref_url, "token source-tok-abc"),
                 ],
             )
-            self.assertNotIn("target-tok-xyz", repr(captured_requests))
+            self.assertEqual(
+                captured_download_requests,
+                [
+                    (evidence_url, "token source-tok-abc"),
+                    (package_url, "token source-tok-abc"),
+                ],
+            )
+            all_requests = captured_api_requests + captured_download_requests
+            self.assertNotIn("target-tok-xyz", repr(all_requests))
 
     def test_target_token_is_not_used_for_source_requests(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1510,7 +1529,9 @@ class TestSourceTokenIsolation(unittest.TestCase):
                     {"SOURCE_GITHUB_TOKEN": "secret-source-tok"},
                     clear=False,
                 ),
-                mock.patch("urllib.request.urlopen", side_effect=error_401),
+                mock.patch.object(
+                    builder._source_opener, "open", side_effect=error_401
+                ),
                 self.assertRaises(RuntimeError) as ctx,
             ):
                 builder.source_download_file(
@@ -1536,7 +1557,9 @@ class TestSourceTokenIsolation(unittest.TestCase):
                     {"SOURCE_GITHUB_TOKEN": "secret-source-tok"},
                     clear=False,
                 ),
-                mock.patch("urllib.request.urlopen", side_effect=error_403),
+                mock.patch.object(
+                    builder._source_opener, "open", side_effect=error_403
+                ),
                 self.assertRaises(RuntimeError) as ctx,
             ):
                 builder.source_download_file(
@@ -1546,6 +1569,167 @@ class TestSourceTokenIsolation(unittest.TestCase):
             error_msg = str(ctx.exception)
             self.assertNotIn("secret-source-tok", error_msg)
             self.assertIn("403", error_msg)
+
+
+class _HeaderCaptureHandler(BaseHTTPRequestHandler):
+    """HTTP handler that records headers seen by the server."""
+
+    def __init__(self, *args, captured_headers=None, serve_body=b"ok", **kwargs):
+        self._captured = captured_headers
+        self._serve_body = serve_body
+        super().__init__(*args, **kwargs)
+
+    def do_GET(self):
+        if self._captured is not None:
+            self._captured.append(dict(self.headers))
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(len(self._serve_body)))
+        self.end_headers()
+        self.wfile.write(self._serve_body)
+
+    def log_message(self, format, *args):
+        pass
+
+
+def _start_server(handler_class=_HeaderCaptureHandler, serve_body=b"ok"):
+    captured = []
+
+    def handler(*a, **kw):
+        return handler_class(*a, captured_headers=captured, serve_body=serve_body, **kw)
+
+    server = HTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread, server.server_address[1], captured
+
+
+def _shutdown_server(server, thread):
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=5)
+
+
+class TestSourceDownloadRedirectSecurity(unittest.TestCase):
+    def test_cross_origin_redirect_strips_authorization(self):
+        target_server, target_thread, target_port, target_headers = _start_server(
+            serve_body=b"payload"
+        )
+        try:
+            origin_headers = []
+
+            class _RedirectHandler(BaseHTTPRequestHandler):
+                def do_GET(self):
+                    origin_headers.append(dict(self.headers))
+                    self.send_response(302)
+                    self.send_header("Location", f"http://127.0.0.1:{target_port}/blob")
+                    self.end_headers()
+
+                def log_message(self, format, *args):
+                    pass
+
+            origin_server = HTTPServer(("127.0.0.1", 0), _RedirectHandler)
+            origin_thread = threading.Thread(
+                target=origin_server.serve_forever, daemon=True
+            )
+            origin_thread.start()
+            origin_port = origin_server.server_address[1]
+            try:
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    dest = Path(tmpdir) / "downloaded.bin"
+                    with mock.patch.dict(
+                        os.environ,
+                        {"SOURCE_GITHUB_TOKEN": "src-secret-token-123"},
+                    ):
+                        builder.source_download_file(
+                            f"http://127.0.0.1:{origin_port}/api/artifact", dest
+                        )
+                    self.assertEqual(dest.read_bytes(), b"payload")
+
+                self.assertEqual(len(origin_headers), 1)
+                self.assertIn("Authorization", origin_headers[0])
+                self.assertIn(
+                    "src-secret-token-123", origin_headers[0]["Authorization"]
+                )
+
+                self.assertEqual(len(target_headers), 1)
+                self.assertNotIn("Authorization", target_headers[0])
+                self.assertNotIn("src-secret-token-123", str(target_headers[0]))
+            finally:
+                _shutdown_server(origin_server, origin_thread)
+        finally:
+            _shutdown_server(target_server, target_thread)
+
+    def test_same_origin_redirect_preserves_authorization(self):
+        all_headers = []
+
+        class _SameOriginRedirectHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                all_headers.append(dict(self.headers))
+                if self.path == "/redirect-me":
+                    self.send_response(302)
+                    self.send_header("Location", "/final")
+                    self.end_headers()
+                else:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Length", "7")
+                    self.end_headers()
+                    self.wfile.write(b"payload")
+
+            def log_message(self, format, *args):
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), _SameOriginRedirectHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        port = server.server_address[1]
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                dest = Path(tmpdir) / "downloaded.bin"
+                with mock.patch.dict(
+                    os.environ,
+                    {"SOURCE_GITHUB_TOKEN": "src-secret-token-456"},
+                ):
+                    builder.source_download_file(
+                        f"http://127.0.0.1:{port}/redirect-me", dest
+                    )
+                self.assertEqual(dest.read_bytes(), b"payload")
+
+            self.assertEqual(len(all_headers), 2)
+            self.assertIn("Authorization", all_headers[0])
+            self.assertIn("src-secret-token-456", all_headers[0]["Authorization"])
+            self.assertIn("Authorization", all_headers[1])
+            self.assertIn("src-secret-token-456", all_headers[1]["Authorization"])
+        finally:
+            _shutdown_server(server, thread)
+
+
+class TestSourceDownloadRedirectOriginNormalization(unittest.TestCase):
+    def test_default_ports_are_treated_as_same_origin(self):
+        handler = builder._SafeRedirectHandler()
+        cases = [
+            ("http://example.invalid/a", "http://example.invalid:80/b"),
+            ("https://example.invalid/a", "https://example.invalid:443/b"),
+            ("http://example.invalid:8080/a", "http://example.invalid:8080/b"),
+        ]
+        for orig_url, new_url in cases:
+            with self.subTest(orig=orig_url, new=new_url):
+                req = urllib.request.Request(orig_url)
+                req.add_header("Authorization", "token test-token")
+                result = handler.redirect_request(req, None, 302, "Moved", {}, new_url)
+                self.assertIsNotNone(result)
+                self.assertEqual(result.get_header("Authorization"), "token test-token")
+
+    def test_cross_port_is_treated_as_cross_origin(self):
+        handler = builder._SafeRedirectHandler()
+        req = urllib.request.Request("http://example.invalid:8080/a")
+        req.add_header("Authorization", "token test-token")
+        result = handler.redirect_request(
+            req, None, 302, "Moved", {}, "http://example.invalid:9090/b"
+        )
+        self.assertIsNotNone(result)
+        self.assertIsNone(result.get_header("Authorization"))
 
 
 class TestImmutablePublicationWorkflows(unittest.TestCase):
