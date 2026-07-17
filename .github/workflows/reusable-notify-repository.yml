@@ -1,0 +1,221 @@
+name: Reusable Notify Repository
+
+on:
+  workflow_call:
+    inputs:
+      source_repository:
+        description: Exact source repository in owner/name form.
+        required: true
+        type: string
+      candidate_sha:
+        description: Exact validated source commit SHA.
+        required: true
+        type: string
+      validation_run_id:
+        description: Positive ID of the completed validation workflow run.
+        required: true
+        type: number
+      validation_workflow:
+        description: Exact name of the completed validation workflow.
+        required: true
+        type: string
+      validation_workflow_path:
+        description: Exact validation workflow path including the @develop suffix.
+        required: true
+        type: string
+      expected_branch:
+        description: Exact validated publication branch, which must be develop.
+        required: true
+        type: string
+      addon_id:
+        description: Exact configured add-on ID bound by validation evidence.
+        required: true
+        type: string
+      addon_version:
+        description: Exact configured add-on version bound by validation evidence.
+        required: true
+        type: string
+      asset_name:
+        description: Exact deterministic package filename bound by validation evidence.
+        required: true
+        type: string
+      artifact_sha256:
+        description: Lowercase SHA-256 bound by validation evidence.
+        required: true
+        type: string
+      publication_id:
+        description: Exact add-on publication identity in addon_id@addon_version form.
+        required: true
+        type: string
+    secrets:
+      REPO_DISPATCH_TOKEN:
+        description: Token limited to dispatching repository.serph91p.
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Resolve immutable tooling revision
+        id: tooling-ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          expected_prefix = (
+              "Serph91P/repository.serph91p/.github/workflows/"
+              "reusable-notify-repository.yml@"
+          )
+          request_url = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL", "")
+          request_token = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "")
+          parsed_url = urllib.parse.urlsplit(request_url)
+          if parsed_url.scheme != "https" or not request_token:
+              raise SystemExit("GitHub OIDC environment is unavailable")
+          separator = "&" if parsed_url.query else "?"
+          request = urllib.request.Request(
+              request_url + separator + "audience=repository.serph91p-tooling",
+              headers={"Authorization": f"Bearer {request_token}"},
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  oidc_response = json.load(response)
+          except (OSError, ValueError, urllib.error.HTTPError, urllib.error.URLError) as error:
+              raise SystemExit("Could not resolve reusable workflow identity") from error
+          token = oidc_response.get("value") if isinstance(oidc_response, dict) else None
+          if not isinstance(token, str) or token.count(".") != 2:
+              raise SystemExit("GitHub OIDC response is malformed")
+          encoded_claims = token.split(".")[1]
+          encoded_claims += "=" * (-len(encoded_claims) % 4)
+          try:
+              claims = json.loads(base64.urlsafe_b64decode(encoded_claims))
+          except (ValueError, json.JSONDecodeError) as error:
+              raise SystemExit("GitHub OIDC claims are malformed") from error
+          job_workflow_ref = claims.get("job_workflow_ref")
+          if not isinstance(job_workflow_ref, str) or not job_workflow_ref.startswith(
+              expected_prefix
+          ):
+              raise SystemExit(
+                  "Reusable workflow identity does not match immutable notifier tooling"
+              )
+          tooling_sha = job_workflow_ref.removeprefix(expected_prefix)
+          if not re.fullmatch(r"[0-9a-f]{40}", tooling_sha, re.ASCII):
+              raise SystemExit(
+                  "Reusable workflow must be pinned to a full lowercase commit SHA"
+              )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="ascii") as output:
+              output.write(f"sha={tooling_sha}\n")
+          PY
+
+      - name: Check out immutable notifier tooling
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: Serph91P/repository.serph91p
+          ref: ${{ steps.tooling-ref.outputs.sha }}
+          path: tooling
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+
+      - name: Validate exact run, artifacts, and evidence
+        id: validate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ACTUAL_SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          VALIDATION_RUN_ID: ${{ inputs.validation_run_id }}
+          VALIDATION_WORKFLOW: ${{ inputs.validation_workflow }}
+          VALIDATION_WORKFLOW_PATH: ${{ inputs.validation_workflow_path }}
+          EXPECTED_BRANCH: ${{ inputs.expected_branch }}
+          ADDON_ID: ${{ inputs.addon_id }}
+          ADDON_VERSION: ${{ inputs.addon_version }}
+          ASSET_NAME: ${{ inputs.asset_name }}
+          ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          PUBLICATION_ID: ${{ inputs.publication_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tooling/addon-publication/notify_repository.py \
+            --source-repository "${SOURCE_REPOSITORY}" \
+            --actual-source-repository "${ACTUAL_SOURCE_REPOSITORY}" \
+            --candidate-sha "${CANDIDATE_SHA}" \
+            --validation-run-id "${VALIDATION_RUN_ID}" \
+            --validation-workflow "${VALIDATION_WORKFLOW}" \
+            --validation-workflow-path "${VALIDATION_WORKFLOW_PATH}" \
+            --expected-branch "${EXPECTED_BRANCH}" \
+            --addon-id "${ADDON_ID}" \
+            --addon-version "${ADDON_VERSION}" \
+            --asset-name "${ASSET_NAME}" \
+            --artifact-sha256 "${ARTIFACT_SHA256}" \
+            --publication-id "${PUBLICATION_ID}" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Dispatch validated publication metadata
+        id: dispatch
+        env:
+          REPO_DISPATCH_TOKEN: ${{ secrets.REPO_DISPATCH_TOKEN }}
+          CLIENT_PAYLOAD: ${{ steps.validate.outputs.client_payload }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          payload = json.loads(os.environ["CLIENT_PAYLOAD"])
+          expected = {
+              "source_repo",
+              "candidate_sha",
+              "validation_run_id",
+              "validation_head_sha",
+              "validation_workflow",
+              "validation_workflow_path",
+              "expected_branch",
+          }
+          if set(payload) != expected or type(payload["validation_run_id"]) is not int:
+              raise SystemExit("Refusing malformed repository dispatch payload")
+          body = json.dumps(
+              {
+                  "event_type": "validated-addon-publication",
+                  "client_payload": payload,
+              },
+              ensure_ascii=True,
+              separators=(",", ":"),
+          ).encode("ascii")
+          request = urllib.request.Request(
+              "https://api.github.com/repos/Serph91P/repository.serph91p/dispatches",
+              data=body,
+              method="POST",
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {os.environ['REPO_DISPATCH_TOKEN']}",
+                  "Content-Type": "application/json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  if response.status != 204:
+                      raise SystemExit("Repository dispatch returned an unexpected status")
+          except (OSError, urllib.error.HTTPError, urllib.error.URLError) as error:
+              raise SystemExit("Repository dispatch failed") from error
+          PY

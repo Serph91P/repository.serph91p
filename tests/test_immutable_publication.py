@@ -24,6 +24,7 @@ FIXTURE_ASSET = "plugin.video.twitch-3.1.8.zip"
 FIXTURE_PUBLICATION_ID = "plugin.video.twitch@3.1.8"
 FIXTURE_SOURCE_REPO = "Serph91P/plugin.video.twitch"
 FIXTURE_BRANCH = "develop"
+FIXTURE_WORKFLOW_PATH = ".github/workflows/addon-validations.yml@develop"
 FIXTURE_ARTIFACT_SHA256 = (
     "d83db0534b640f2283d9c7ded69d9f8406c274f13385cf045e2a77184058caaa"
 )
@@ -36,6 +37,7 @@ def _valid_dispatch(**overrides):
         "validation_run_id": FIXTURE_RUN_ID,
         "validation_head_sha": FIXTURE_SHA,
         "validation_workflow": "Add-on Validations",
+        "validation_workflow_path": FIXTURE_WORKFLOW_PATH,
         "expected_branch": "develop",
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -66,6 +68,7 @@ def _valid_run(**overrides):
         "head_sha": FIXTURE_SHA,
         "conclusion": "success",
         "name": "Add-on Validations",
+        "path": FIXTURE_WORKFLOW_PATH,
         "head_branch": "develop",
     }
     run.update(overrides)
@@ -231,6 +234,12 @@ class TestValidateDispatchPayload(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             builder.validate_dispatch_payload(payload)
 
+    def test_missing_validation_workflow_path_is_rejected(self):
+        payload = _valid_dispatch()
+        del payload["validation_workflow_path"]
+        with self.assertRaises(RuntimeError):
+            builder.validate_dispatch_payload(payload)
+
     def test_missing_expected_branch_is_rejected(self):
         payload = _valid_dispatch()
         del payload["expected_branch"]
@@ -367,96 +376,56 @@ class TestValidateImmutableEvidence(unittest.TestCase):
 
 
 class TestValidateGithubRun(unittest.TestCase):
-    def test_valid_run_passes(self):
-        builder.validate_github_run(
-            _valid_run(),
+    def validate(self, run):
+        return builder.validate_github_run(
+            run,
             FIXTURE_RUN_ID,
             FIXTURE_SHA,
             "Add-on Validations",
+            FIXTURE_WORKFLOW_PATH,
             FIXTURE_BRANCH,
         )
 
+    def test_valid_run_passes(self):
+        self.validate(_valid_run())
+
     def test_wrong_run_id_is_rejected(self):
         with self.assertRaises(RuntimeError):
-            builder.validate_github_run(
-                _valid_run(id=99999999999),
-                FIXTURE_RUN_ID,
-                FIXTURE_SHA,
-                "Add-on Validations",
-                FIXTURE_BRANCH,
-            )
+            self.validate(_valid_run(id=99999999999))
 
     def test_wrong_head_sha_is_rejected(self):
         with self.assertRaises(RuntimeError):
-            builder.validate_github_run(
-                _valid_run(head_sha="deadbeef" + "0" * 32),
-                FIXTURE_RUN_ID,
-                FIXTURE_SHA,
-                "Add-on Validations",
-                FIXTURE_BRANCH,
-            )
+            self.validate(_valid_run(head_sha="deadbeef" + "0" * 32))
 
     def test_wrong_workflow_name_is_rejected(self):
         with self.assertRaises(RuntimeError):
-            builder.validate_github_run(
-                _valid_run(name="Wrong Workflow"),
-                FIXTURE_RUN_ID,
-                FIXTURE_SHA,
-                "Add-on Validations",
-                FIXTURE_BRANCH,
-            )
+            self.validate(_valid_run(name="Wrong Workflow"))
+
+    def test_wrong_workflow_path_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            self.validate(_valid_run(path=".github/workflows/untrusted.yml@develop"))
 
     def test_wrong_branch_is_rejected(self):
         with self.assertRaises(RuntimeError):
-            builder.validate_github_run(
-                _valid_run(head_branch="main"),
-                FIXTURE_RUN_ID,
-                FIXTURE_SHA,
-                "Add-on Validations",
-                FIXTURE_BRANCH,
-            )
+            self.validate(_valid_run(head_branch="main"))
 
     def test_failed_conclusion_is_rejected(self):
         with self.assertRaises(RuntimeError):
-            builder.validate_github_run(
-                _valid_run(conclusion="failure"),
-                FIXTURE_RUN_ID,
-                FIXTURE_SHA,
-                "Add-on Validations",
-                FIXTURE_BRANCH,
-            )
+            self.validate(_valid_run(conclusion="failure"))
 
     def test_missing_conclusion_is_rejected(self):
         run = _valid_run()
         del run["conclusion"]
         with self.assertRaises(RuntimeError):
-            builder.validate_github_run(
-                run,
-                FIXTURE_RUN_ID,
-                FIXTURE_SHA,
-                "Add-on Validations",
-                FIXTURE_BRANCH,
-            )
+            self.validate(run)
 
     def test_in_progress_conclusion_is_rejected(self):
         with self.assertRaises(RuntimeError):
-            builder.validate_github_run(
-                _valid_run(conclusion=None),
-                FIXTURE_RUN_ID,
-                FIXTURE_SHA,
-                "Add-on Validations",
-                FIXTURE_BRANCH,
-            )
+            self.validate(_valid_run(conclusion=None))
 
     def test_non_dict_run_data_is_rejected(self):
         with self.assertRaises(RuntimeError):
-            builder.validate_github_run(
-                "not-a-dict",
-                FIXTURE_RUN_ID,
-                FIXTURE_SHA,
-                "Add-on Validations",
-                FIXTURE_BRANCH,
-            )
+            self.validate("not-a-dict")
 
 
 class TestVerifyPackageSha256(unittest.TestCase):
@@ -972,6 +941,7 @@ class TestBuildImmutableRepository(unittest.TestCase):
                         "id": FIXTURE_RUN_ID,
                         "head_sha": FIXTURE_SHA,
                         "name": "Add-on Validations",
+                        "path": FIXTURE_WORKFLOW_PATH,
                         "head_branch": FIXTURE_BRANCH,
                         "conclusion": "success",
                     }
