@@ -87,6 +87,7 @@ def _check_version_monotonicity(repo_root, addon_id, candidate_version):
     and ensures candidate >= current. Equal versions are permitted because
     rerunning an immutable candidate may be needed. Fails closed if the
     manifest is missing, unparseable, or the existing version is invalid.
+    Rejects duplicate addon ids as ambiguous.
     """
     manifest_path = repo_root / "repo" / "addons.xml"
     if not manifest_path.is_file():
@@ -101,6 +102,7 @@ def _check_version_monotonicity(repo_root, addon_id, candidate_version):
         raise RuntimeError(
             f"Existing manifest {manifest_path} has unexpected root {root.tag!r}"
         )
+    matching_versions = []
     for addon in root:
         if addon.tag != "addon":
             raise RuntimeError(
@@ -108,19 +110,30 @@ def _check_version_monotonicity(repo_root, addon_id, candidate_version):
                 f"{addon.tag!r}"
             )
         if addon.get("id") == addon_id:
+            if len(addon):
+                raise RuntimeError(
+                    f"Existing addon {addon_id} in {manifest_path} has unexpected child elements"
+                )
             current_version = addon.get("version")
             if not current_version:
                 raise RuntimeError(
                     f"Existing addon {addon_id} in {manifest_path} has no version"
                 )
-            candidate_tuple = _parse_kodi_version(candidate_version)
-            current_tuple = _parse_kodi_version(current_version)
-            if candidate_tuple < current_tuple:
-                raise RuntimeError(
-                    f"Rejecting {addon_id} version {candidate_version}: "
-                    f"currently published version {current_version} is newer"
-                )
-            return
+            matching_versions.append(current_version)
+    if not matching_versions:
+        return
+    if len(matching_versions) > 1:
+        raise RuntimeError(
+            f"Existing manifest {manifest_path} contains duplicate addon {addon_id!r}: "
+            f"versions {matching_versions}"
+        )
+    candidate_tuple = _parse_kodi_version(candidate_version)
+    current_tuple = _parse_kodi_version(matching_versions[0])
+    if candidate_tuple < current_tuple:
+        raise RuntimeError(
+            f"Rejecting {addon_id} version {candidate_version}: "
+            f"currently published version {matching_versions[0]} is newer"
+        )
 
 
 REPO_ADDON_ID = "repository.serph91p"
