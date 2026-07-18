@@ -129,6 +129,10 @@ class ReusableNotifierWorkflowTests(unittest.TestCase):
         self.assertIn("needs.validate.result == \'success\'", job["if"])
         self.assertIn("needs.package.result == \'success\'", job["if"])
         self.assertEqual(
+            job["permissions"],
+            {"actions": "read", "contents": "read", "id-token": "write"},
+        )
+        self.assertEqual(
             set(job["with"]),
             {
                 "source_repository",
@@ -148,55 +152,60 @@ class ReusableNotifierWorkflowTests(unittest.TestCase):
 
 
 class NotifyRepositoryWorkflowPayloadTests(unittest.TestCase):
-    def test_validation_workflow_path_in_client_payload(self):
-        with NOTIFIER_TEMPLATE.open(encoding="utf-8") as f:
-            text = f.read()
-        self.assertIn('validation_workflow_path": "${{ github.event.workflow_run.path }}@develop"', text)
+    @classmethod
+    def setUpClass(cls):
+        cls.text = NOTIFIER_TEMPLATE.read_text(encoding="utf-8")
+        cls.workflow = yaml.load(cls.text, Loader=yaml.BaseLoader)
 
-    def test_dispatch_payload_passes_validator(self):
-        representative = {
-            "source_repo": "Serph91P/plugin.video.example",
-            "candidate_sha": "25b5920a9204acedf3d05dc009d78918d2bf0648",
-            "validation_run_id": 29549561132,
-            "validation_head_sha": "25b5920a9204acedf3d05dc009d78918d2bf0648",
-            "validation_workflow": "Add-on Validations",
-            "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
-            "expected_branch": "develop",
-        }
-        self.assertEqual(list(representative.keys()), [
-            "source_repo", "candidate_sha", "validation_run_id",
-            "validation_head_sha", "validation_workflow", "validation_workflow_path", "expected_branch"
-        ])
-        from scripts import build_repository as builder
-        builder.validate_dispatch_payload(representative)
+    def test_template_is_only_a_pinned_reusable_workflow_caller(self):
+        self.assertEqual(list(self.workflow["on"]), ["workflow_call"])
+        job = self.workflow["jobs"]["notify-repository"]
+        self.assertNotIn("runs-on", job)
+        self.assertNotIn("steps", job)
+        self.assertTrue(FULL_SHA_ACTION.fullmatch(job["uses"]), job["uses"])
+        self.assertTrue(
+            job["uses"].startswith(
+                "Serph91P/repository.serph91p/.github/workflows/"
+                "reusable-notify-repository.yml@"
+            )
+        )
+        self.assertNotIn("repository-dispatch", self.text)
+        self.assertNotRegex(self.text, r"uses:\s+[^\s]+@v\d+")
 
-    def test_validation_workflow_path_main_tag_raises_error(self):
-        invalid = {
-            "source_repo": "Serph91P/plugin.video.example",
-            "candidate_sha": "25b5920a9204acedf3d05dc009d78918d2bf0648",
-            "validation_run_id": 29549561132,
-            "validation_head_sha": "25b5920a9204acedf3d05dc009d78918d2bf0648",
-            "validation_workflow": "Add-on Validations",
-            "validation_workflow_path": ".github/workflows/addon-validations.yml@main",
-            "expected_branch": "develop",
-        }
-        with self.assertRaises(RuntimeError):
-            from scripts import build_repository as builder
-            builder.validate_dispatch_payload(invalid)
+    def test_template_permissions_preserve_caller_oidc(self):
+        job = self.workflow["jobs"]["notify-repository"]
+        self.assertEqual(
+            job["permissions"],
+            {"actions": "read", "contents": "read", "id-token": "write"},
+        )
 
-    def test_validation_workflow_path_no_suffix_raises_error(self):
-        invalid = {
-            "source_repo": "Serph91P/plugin.video.example",
-            "candidate_sha": "25b5920a9204acedf3d05dc009d78918d2bf0648",
-            "validation_run_id": 29549561132,
-            "validation_head_sha": "25b5920a9204acedf3d05dc009d78918d2bf0648",
-            "validation_workflow": "Add-on Validations",
-            "validation_workflow_path": "simple/path",
-            "expected_branch": "develop",
-        }
-        with self.assertRaises(RuntimeError):
-            from scripts import build_repository as builder
-            builder.validate_dispatch_payload(invalid)
+    def test_template_forwards_context_and_fixed_identity(self):
+        call = self.workflow["on"]["workflow_call"]
+        self.assertEqual(
+            set(call["inputs"]),
+            {
+                "addon_id",
+                "addon_version",
+                "asset_name",
+                "artifact_sha256",
+                "publication_id",
+            },
+        )
+        job = self.workflow["jobs"]["notify-repository"]
+        self.assertEqual(job["with"]["source_repository"], "${{ github.repository }}")
+        self.assertEqual(job["with"]["candidate_sha"], "${{ github.sha }}")
+        self.assertEqual(job["with"]["validation_run_id"], "${{ github.run_id }}")
+        self.assertEqual(job["with"]["validation_workflow"], "Add-on Validations")
+        self.assertEqual(
+            job["with"]["validation_workflow_path"],
+            ".github/workflows/addon-validations.yml@develop",
+        )
+        self.assertEqual(job["with"]["expected_branch"], "develop")
+        self.assertNotIn("github.event.workflow_run.path", self.text)
+        self.assertEqual(
+            job["secrets"],
+            {"REPO_DISPATCH_TOKEN": "${{ secrets.REPO_DISPATCH_TOKEN }}"},
+        )
 
 
 if __name__ == "__main__":

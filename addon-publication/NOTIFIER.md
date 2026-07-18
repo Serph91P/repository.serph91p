@@ -25,8 +25,8 @@ The reusable workflow requires these inputs:
 | `publication_id` | Exact publication identity, `<addon_id>@<addon_version>`. |
 
 A source workflow can enforce the validation and packaging order as follows. The
-workflow itself must run on a `push` to `develop`, and `validation_workflow` must
-match its exact GitHub Actions workflow name.
+workflow itself must run on a `push` to `develop`, and `validation_workflow_path`
+must be fixed to the approved workflow path on the develop branch.
 
 ```yaml
 jobs:
@@ -37,6 +37,9 @@ jobs:
 
   package:
     needs: validate
+    permissions:
+      contents: read
+      id-token: write
     uses: Serph91P/repository.serph91p/.github/workflows/reusable-addon-package.yml@<40-char-sha>
     with:
       addon_id: plugin.video.example
@@ -45,6 +48,10 @@ jobs:
   notify-repository:
     needs: [validate, package]
     if: ${{ needs.validate.result == 'success' && needs.package.result == 'success' }}
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
     uses: Serph91P/repository.serph91p/.github/workflows/reusable-notify-repository.yml@<40-char-sha>
     with:
       source_repository: ${{ github.repository }}
@@ -67,6 +74,12 @@ effect is a `validated-addon-publication` dispatch to
 `Serph91P/repository.serph91p`. The dispatch `client_payload` contains only
 `source_repo`, `candidate_sha`, `validation_run_id`, `validation_head_sha`,
 `validation_workflow`, `validation_workflow_path`, and `expected_branch`.
+
+`addon-workflow-templates/notify-repository.yml` is a source-side forwarding
+workflow for projects that keep notification in a separate reusable file. It
+is pinned to the trusted notifier by full commit SHA, derives source and run
+identity from the GitHub context, fixes the workflow name, path, and branch,
+and forwards only package outputs. It performs no direct dispatch.
 
 Call the notifier only after a successful completed `push` validation run for
 `develop`. The notifier independently verifies that event, branch, conclusion,
@@ -100,3 +113,23 @@ The reusable workflow grants `actions: read`, `contents: read`, and
 reusable-workflow identity claim. Tokens, artifact download URLs, redirect URLs,
 credentials, and signed URLs are never included in the dispatch payload or
 printed by the notifier.
+
+## Target-owned publication policy
+
+The target repository (`repository.serph91p`) maintains authoritative
+configuration for immutable publication. Each source has a per-source entry in
+the target's `ADDONS` list. Dispatch-provided values identify the run and
+candidate; they cannot redefine workflow identity, branch, artifact names,
+add-on ID, or allowlist policy. The target enforces per-source:
+
+- `publication_enabled` must be `True` for the source.
+- `expected_branch` must match `publication_branch` from the source policy.
+- `validation_workflow` must match the approved workflow name.
+- `validation_workflow_path` must exactly match the approved workflow path on
+  `develop`.
+- `workflow_id` from the GitHub API run response must match the source's
+  `validation_workflow_id`.
+- Artifact names are fixed to `addon-package` and `validation-evidence`;
+  sender-selected artifact names are rejected.
+- Runtime allowlist entries are enforced against the source's
+  `runtime_entries` tuple.

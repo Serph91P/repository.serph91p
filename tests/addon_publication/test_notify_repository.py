@@ -303,6 +303,35 @@ class ArtifactPaginationTests(unittest.TestCase):
         with self.assertRaises(notifier.NotificationError):
             notifier.find_required_artifacts(fetch, SOURCE, RUN_ID, now=NOW)
 
+    def test_duplicate_required_artifact_on_later_page_fails_closed(self):
+        """Regression: duplicate addon-package on a later page must be rejected."""
+        base = (
+            f"https://api.github.com/repos/{SOURCE}/actions/runs/{RUN_ID}/artifacts"
+            "?per_page=100&page=2"
+        )
+        pages = [
+            (
+                {
+                    "artifacts": [
+                        artifact("addon-package", 1),
+                    ]
+                },
+                {"Link": f'<{base}>; rel="next"'},
+            ),
+            (
+                {
+                    "artifacts": [
+                        artifact("addon-package", 3),
+                        artifact("validation-evidence", 2),
+                    ]
+                },
+                {},
+            ),
+        ]
+        fetch, _ = self._fetcher(pages)
+        with self.assertRaises(notifier.NotificationError):
+            notifier.find_required_artifacts(fetch, SOURCE, RUN_ID, now=NOW)
+
     def test_malformed_page_or_artifact_fails_closed(self):
         for payload in (
             [],

@@ -1,3 +1,4 @@
+import datetime
 import hashlib
 import io
 import json
@@ -39,8 +40,6 @@ def _valid_dispatch(**overrides):
         "validation_workflow": "Add-on Validations",
         "validation_workflow_path": FIXTURE_WORKFLOW_PATH,
         "expected_branch": "develop",
-        "package_artifact_name": "addon-package",
-        "evidence_artifact_name": "validation-evidence",
     }
     payload.update(overrides)
     return payload
@@ -70,22 +69,28 @@ def _valid_run(**overrides):
         "name": "Add-on Validations",
         "path": FIXTURE_WORKFLOW_PATH,
         "head_branch": "develop",
+        "status": "completed",
+        "event": "push",
+        "repository": {"full_name": FIXTURE_SOURCE_REPO},
+        "workflow_id": 211623879,
     }
     run.update(overrides)
     return run
 
 
-def _make_addon_zip(path, addon_id, version, member_count=5):
+def _make_addon_zip(path, addon_id, version, extra_members=None):
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
         metadata = (
             f'<addon id="{addon_id}" name="Test" version="{version}" '
             f'provider-name="Test"><extension point="xbmc.addon.metadata">'
-            f"<assets><icon>icon.png</icon></assets></extension></addon>"
+            f"<assets><icon>resources/icon.png</icon></assets></extension></addon>"
         )
         archive.writestr(f"{addon_id}/addon.xml", metadata)
-        archive.writestr(f"{addon_id}/icon.png", b"icon-data")
-        for i in range(member_count - 2):
-            archive.writestr(f"{addon_id}/file{i}.txt", f"data{i}".encode())
+        archive.writestr(f"{addon_id}/changelog.txt", b"changes")
+        archive.writestr(f"{addon_id}/resources/icon.png", b"icon-data")
+        if extra_members:
+            for name, content in extra_members.items():
+                archive.writestr(f"{addon_id}/{name}", content)
     return path
 
 
@@ -121,20 +126,27 @@ def _make_mock_api_responses(evidence_archive, package_archive):
             return run_data
         if "/actions/runs/" in url and "/artifacts" in url:
             return {
+                "total_count": 2,
                 "artifacts": [
                     {
                         "name": "validation-evidence",
                         "id": 1,
                         "expired": False,
+                        "created_at": "2026-07-01T00:00:00Z",
+                        "expires_at": "2026-07-31T00:00:00Z",
                         "archive_download_url": "https://example.invalid/evidence.zip",
+                        "workflow_run": {"id": FIXTURE_RUN_ID},
                     },
                     {
                         "name": "addon-package",
                         "id": 2,
                         "expired": False,
+                        "created_at": "2026-07-01T00:00:00Z",
+                        "expires_at": "2026-07-31T00:00:00Z",
                         "archive_download_url": "https://example.invalid/package.zip",
+                        "workflow_run": {"id": FIXTURE_RUN_ID},
                     },
-                ]
+                ],
             }
         raise RuntimeError(f"Unexpected API URL: {url}")
 
@@ -171,16 +183,38 @@ def _snapshot_tree(directory):
 
 
 class TestValidateDispatchPayload(unittest.TestCase):
+    def _enabled_addon(self):
+        config = next(
+            c.copy()
+            for c in builder.ADDONS
+            if f"{c['owner']}/{c['repo']}" == FIXTURE_SOURCE_REPO
+        )
+        config["publication_enabled"] = True
+        return config
+
     def test_valid_payload_passes(self):
-        builder.validate_dispatch_payload(_valid_dispatch())
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            builder.validate_dispatch_payload(_valid_dispatch())
 
     def test_non_dict_is_rejected(self):
         with self.assertRaises(RuntimeError):
             builder.validate_dispatch_payload("not-a-dict")
 
     def test_unknown_fields_are_rejected(self):
-        with self.assertRaises(RuntimeError):
-            builder.validate_dispatch_payload(_valid_dispatch(addons=[], extra="x"))
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError):
+                builder.validate_dispatch_payload(_valid_dispatch(addons=[], extra="x"))
+
+    def test_sender_selected_artifact_names_are_rejected(self):
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError) as ctx:
+                builder.validate_dispatch_payload(
+                    _valid_dispatch(
+                        package_artifact_name="addon-package",
+                        evidence_artifact_name="validation-evidence",
+                    )
+                )
+            self.assertIn("unknown fields", str(ctx.exception))
 
     def test_missing_source_repo_is_rejected(self):
         payload = _valid_dispatch()
@@ -192,65 +226,103 @@ class TestValidateDispatchPayload(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             builder.validate_dispatch_payload(_valid_dispatch(source_repo="noslash"))
 
+    def test_unconfigured_source_repo_is_rejected(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            builder.validate_dispatch_payload(
+                _valid_dispatch(source_repo="unknown/repo")
+            )
+        self.assertIn("not in the configured ADDONS list", str(ctx.exception))
+
+    def test_wrong_workflow_path_is_rejected(self):
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError) as ctx:
+                builder.validate_dispatch_payload(
+                    _valid_dispatch(
+                        validation_workflow_path=(
+                            ".github/workflows/untrusted.yml@develop"
+                        )
+                    )
+                )
+            self.assertIn("does not match approved path", str(ctx.exception))
+
+    def test_wrong_expected_branch_is_rejected(self):
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError) as ctx:
+                builder.validate_dispatch_payload(
+                    _valid_dispatch(expected_branch="main")
+                )
+            self.assertIn("does not match approved branch", str(ctx.exception))
+
     def test_missing_candidate_sha_is_rejected(self):
         payload = _valid_dispatch()
         del payload["candidate_sha"]
-        with self.assertRaises(RuntimeError):
-            builder.validate_dispatch_payload(payload)
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError):
+                builder.validate_dispatch_payload(payload)
 
     def test_short_candidate_sha_is_rejected(self):
-        with self.assertRaises(RuntimeError):
-            builder.validate_dispatch_payload(_valid_dispatch(candidate_sha="abc"))
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError):
+                builder.validate_dispatch_payload(_valid_dispatch(candidate_sha="abc"))
 
     def test_non_hex_candidate_sha_is_rejected(self):
-        with self.assertRaises(RuntimeError):
-            builder.validate_dispatch_payload(_valid_dispatch(candidate_sha="g" * 40))
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError):
+                builder.validate_dispatch_payload(
+                    _valid_dispatch(candidate_sha="g" * 40)
+                )
 
     def test_missing_validation_run_id_is_rejected(self):
         payload = _valid_dispatch()
         del payload["validation_run_id"]
-        with self.assertRaises(RuntimeError):
-            builder.validate_dispatch_payload(payload)
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError):
+                builder.validate_dispatch_payload(payload)
 
     def test_string_validation_run_id_is_rejected(self):
-        with self.assertRaises(RuntimeError):
-            builder.validate_dispatch_payload(
-                _valid_dispatch(validation_run_id="not-int")
-            )
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError):
+                builder.validate_dispatch_payload(
+                    _valid_dispatch(validation_run_id="not-int")
+                )
 
     def test_negative_validation_run_id_is_rejected(self):
-        with self.assertRaises(RuntimeError):
-            builder.validate_dispatch_payload(_valid_dispatch(validation_run_id=-1))
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError):
+                builder.validate_dispatch_payload(_valid_dispatch(validation_run_id=-1))
 
     def test_missing_validation_head_sha_is_rejected(self):
         payload = _valid_dispatch()
         del payload["validation_head_sha"]
-        with self.assertRaises(RuntimeError):
-            builder.validate_dispatch_payload(payload)
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError):
+                builder.validate_dispatch_payload(payload)
 
     def test_missing_validation_workflow_is_rejected(self):
         payload = _valid_dispatch()
         del payload["validation_workflow"]
-        with self.assertRaises(RuntimeError):
-            builder.validate_dispatch_payload(payload)
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError):
+                builder.validate_dispatch_payload(payload)
 
     def test_missing_validation_workflow_path_is_rejected(self):
         payload = _valid_dispatch()
         del payload["validation_workflow_path"]
-        with self.assertRaises(RuntimeError):
-            builder.validate_dispatch_payload(payload)
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError):
+                builder.validate_dispatch_payload(payload)
 
     def test_missing_expected_branch_is_rejected(self):
         payload = _valid_dispatch()
         del payload["expected_branch"]
-        with self.assertRaises(RuntimeError):
-            builder.validate_dispatch_payload(payload)
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError):
+                builder.validate_dispatch_payload(payload)
 
-    def test_defaults_for_optional_artifact_names(self):
-        payload = _valid_dispatch()
-        del payload["package_artifact_name"]
-        del payload["evidence_artifact_name"]
-        builder.validate_dispatch_payload(payload)
+    def test_disabled_source_is_rejected(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            builder.validate_dispatch_payload(_valid_dispatch())
+        self.assertIn("disabled", str(ctx.exception))
 
 
 class TestValidateImmutableEvidence(unittest.TestCase):
@@ -376,14 +448,30 @@ class TestValidateImmutableEvidence(unittest.TestCase):
 
 
 class TestValidateGithubRun(unittest.TestCase):
-    def validate(self, run):
+    def _source_config(self, **overrides):
+        config = {
+            "owner": "Serph91P",
+            "repo": "plugin.video.twitch",
+            "addon_id": "plugin.video.twitch",
+            "branch": "main",
+            "publication_branch": "develop",
+            "validation_workflow": "Add-on Validations",
+            "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+            "validation_workflow_id": 211623879,
+            "package_artifact_name": "addon-package",
+            "evidence_artifact_name": "validation-evidence",
+        }
+        config.update(overrides)
+        return config
+
+    def validate(self, run, config=None):
+        if config is None:
+            config = self._source_config()
         return builder.validate_github_run(
             run,
             FIXTURE_RUN_ID,
             FIXTURE_SHA,
-            "Add-on Validations",
-            FIXTURE_WORKFLOW_PATH,
-            FIXTURE_BRANCH,
+            config,
         )
 
     def test_valid_run_passes(self):
@@ -427,6 +515,29 @@ class TestValidateGithubRun(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.validate("not-a-dict")
 
+    def test_wrong_workflow_id_is_rejected(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            self.validate(
+                _valid_run(workflow_id=987654),
+            )
+        self.assertIn("workflow_id", str(ctx.exception))
+
+    def test_missing_status_is_rejected(self):
+        run = _valid_run()
+        del run["status"]
+        with self.assertRaises(RuntimeError):
+            self.validate(run)
+
+    def test_wrong_event_is_rejected(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            self.validate(_valid_run(event="workflow_dispatch"))
+        self.assertIn("event", str(ctx.exception))
+
+    def test_wrong_repository_is_rejected(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            self.validate(_valid_run(repository={"full_name": "attacker/repo"}))
+        self.assertIn("repository", str(ctx.exception))
+
 
 class TestVerifyPackageSha256(unittest.TestCase):
     def test_matching_sha256_passes(self):
@@ -444,12 +555,147 @@ class TestVerifyPackageSha256(unittest.TestCase):
                 builder.verify_package_sha256(path, "0" * 64)
 
 
+class TestFetchValidatedRunArtifacts(unittest.TestCase):
+    source_config = {
+        "package_artifact_name": "addon-package",
+        "evidence_artifact_name": "validation-evidence",
+    }
+
+    def artifact(self, name, artifact_id, **overrides):
+        value = {
+            "name": name,
+            "id": artifact_id,
+            "expired": False,
+            "created_at": "2026-07-01T00:00:00Z",
+            "expires_at": "2026-07-31T00:00:00Z",
+            "archive_download_url": f"https://example.invalid/{artifact_id}.zip",
+            "workflow_run": {"id": FIXTURE_RUN_ID},
+        }
+        value.update(overrides)
+        return value
+
+    def fetch(self, pages):
+        calls = []
+
+        def api_get(url):
+            calls.append(url)
+            return pages[len(calls) - 1]
+
+        return api_get, calls
+
+    def test_required_artifacts_on_separate_pages_are_accepted(self):
+        api_get, calls = self.fetch(
+            [
+                {
+                    "total_count": 2,
+                    "artifacts": [self.artifact("addon-package", 1)],
+                },
+                {
+                    "total_count": 2,
+                    "artifacts": [self.artifact("validation-evidence", 2)],
+                },
+            ]
+        )
+        with mock.patch.object(builder, "source_github_api_get", side_effect=api_get):
+            selected = builder.fetch_validated_run_artifacts(
+                FIXTURE_SOURCE_REPO,
+                FIXTURE_RUN_ID,
+                self.source_config,
+                now=datetime.datetime(2026, 7, 17, tzinfo=datetime.timezone.utc),
+            )
+        self.assertEqual(set(selected), {"addon-package", "validation-evidence"})
+        self.assertEqual(len(calls), 2)
+
+    def test_duplicate_required_artifact_on_later_page_is_rejected(self):
+        api_get, calls = self.fetch(
+            [
+                {
+                    "total_count": 3,
+                    "artifacts": [self.artifact("addon-package", 1)],
+                },
+                {
+                    "total_count": 3,
+                    "artifacts": [
+                        self.artifact("validation-evidence", 2),
+                        self.artifact("addon-package", 3),
+                    ],
+                },
+            ]
+        )
+        with (
+            mock.patch.object(builder, "source_github_api_get", side_effect=api_get),
+            self.assertRaisesRegex(RuntimeError, "Duplicate required artifact name"),
+        ):
+            builder.fetch_validated_run_artifacts(
+                FIXTURE_SOURCE_REPO,
+                FIXTURE_RUN_ID,
+                self.source_config,
+                now=datetime.datetime(2026, 7, 17, tzinfo=datetime.timezone.utc),
+            )
+        self.assertEqual(len(calls), 2)
+
+    def test_artifact_retention_must_be_exact(self):
+        api_get, _calls = self.fetch(
+            [
+                {
+                    "total_count": 2,
+                    "artifacts": [
+                        self.artifact(
+                            "addon-package",
+                            1,
+                            expires_at="2026-07-31T00:00:01Z",
+                        ),
+                        self.artifact("validation-evidence", 2),
+                    ],
+                }
+            ]
+        )
+        with (
+            mock.patch.object(builder, "source_github_api_get", side_effect=api_get),
+            self.assertRaisesRegex(RuntimeError, "retention"),
+        ):
+            builder.fetch_validated_run_artifacts(
+                FIXTURE_SOURCE_REPO,
+                FIXTURE_RUN_ID,
+                self.source_config,
+                now=datetime.datetime(2026, 7, 17, tzinfo=datetime.timezone.utc),
+            )
+
+
 class TestValidateArchiveTopology(unittest.TestCase):
     def test_valid_topology_passes(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.zip"
             _make_addon_zip(path, "plugin.example", "1.0.0")
             builder.validate_archive_topology(path, "plugin.example", "1.0.0")
+
+    def test_target_runtime_allowlist_accepts_declared_paths(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.zip"
+            _make_addon_zip(path, "plugin.example", "1.0.0")
+            builder.validate_archive_topology(
+                path,
+                "plugin.example",
+                "1.0.0",
+                ("addon.xml", "changelog.txt", "resources/"),
+            )
+
+    def test_target_runtime_allowlist_rejects_undeclared_paths(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.zip"
+            _make_addon_zip(
+                path,
+                "plugin.example",
+                "1.0.0",
+                extra_members={"undeclared.py": b"untrusted"},
+            )
+            with self.assertRaisesRegex(RuntimeError, "Undeclared runtime member"):
+                builder.validate_archive_topology(
+                    path,
+                    "plugin.example",
+                    "1.0.0",
+                    ("addon.xml", "changelog.txt", "resources/"),
+                )
 
     def test_member_with_wrong_root_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -563,6 +809,14 @@ class TestBuildImmutableRepository(unittest.TestCase):
         "repo": "plugin.video.twitch",
         "addon_id": "plugin.video.twitch",
         "branch": "main",
+        "publication_enabled": True,
+        "publication_branch": "develop",
+        "validation_workflow": "Add-on Validations",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_id": 211623879,
+        "package_artifact_name": "addon-package",
+        "evidence_artifact_name": "validation-evidence",
+        "runtime_entries": ("addon.xml", "changelog.txt", "resources/"),
     }
 
     def _build_with_mock(self, root, dispatch_payload, api_get, download):
@@ -695,20 +949,27 @@ class TestBuildImmutableRepository(unittest.TestCase):
                     return run_data
                 if "/actions/runs/" in url and "/artifacts" in url:
                     return {
+                        "total_count": 2,
                         "artifacts": [
                             {
                                 "name": "validation-evidence",
                                 "id": 1,
                                 "expired": False,
+                                "created_at": "2026-07-01T00:00:00Z",
+                                "expires_at": "2026-07-31T00:00:00Z",
                                 "archive_download_url": "https://example.invalid/evidence.zip",
+                                "workflow_run": {"id": FIXTURE_RUN_ID},
                             },
                             {
                                 "name": "addon-package",
                                 "id": 2,
                                 "expired": False,
+                                "created_at": "2026-07-01T00:00:00Z",
+                                "expires_at": "2026-07-31T00:00:00Z",
                                 "archive_download_url": "https://example.invalid/package.zip",
+                                "workflow_run": {"id": FIXTURE_RUN_ID},
                             },
-                        ]
+                        ],
                     }
                 raise RuntimeError(f"Unexpected URL: {url}")
 
@@ -731,14 +992,18 @@ class TestBuildImmutableRepository(unittest.TestCase):
                     return _valid_run()
                 if "/actions/runs/" in url and "/artifacts" in url:
                     return {
+                        "total_count": 1,
                         "artifacts": [
                             {
                                 "name": "addon-package",
                                 "id": 2,
                                 "expired": False,
+                                "created_at": "2026-07-01T00:00:00Z",
+                                "expires_at": "2026-07-31T00:00:00Z",
                                 "archive_download_url": "https://example.invalid/package.zip",
+                                "workflow_run": {"id": FIXTURE_RUN_ID},
                             },
-                        ]
+                        ],
                     }
                 raise RuntimeError(f"Unexpected URL: {url}")
 
@@ -767,14 +1032,18 @@ class TestBuildImmutableRepository(unittest.TestCase):
                     return _valid_run()
                 if "/actions/runs/" in url and "/artifacts" in url:
                     return {
+                        "total_count": 1,
                         "artifacts": [
                             {
                                 "name": "validation-evidence",
                                 "id": 1,
                                 "expired": False,
+                                "created_at": "2026-07-01T00:00:00Z",
+                                "expires_at": "2026-07-31T00:00:00Z",
                                 "archive_download_url": "https://example.invalid/evidence.zip",
+                                "workflow_run": {"id": FIXTURE_RUN_ID},
                             },
-                        ]
+                        ],
                     }
                 raise RuntimeError(f"Unexpected URL: {url}")
 
@@ -803,20 +1072,27 @@ class TestBuildImmutableRepository(unittest.TestCase):
                     return _valid_run()
                 if "/actions/runs/" in url and "/artifacts" in url:
                     return {
+                        "total_count": 2,
                         "artifacts": [
                             {
                                 "name": "validation-evidence",
                                 "id": 1,
                                 "expired": True,
+                                "created_at": "2026-07-01T00:00:00Z",
+                                "expires_at": "2026-07-31T00:00:00Z",
                                 "archive_download_url": "https://example.invalid/evidence.zip",
+                                "workflow_run": {"id": FIXTURE_RUN_ID},
                             },
                             {
                                 "name": "addon-package",
                                 "id": 2,
                                 "expired": False,
+                                "created_at": "2026-07-01T00:00:00Z",
+                                "expires_at": "2026-07-31T00:00:00Z",
                                 "archive_download_url": "https://example.invalid/package.zip",
+                                "workflow_run": {"id": FIXTURE_RUN_ID},
                             },
-                        ]
+                        ],
                     }
                 raise RuntimeError(f"Unexpected URL: {url}")
 
@@ -944,23 +1220,34 @@ class TestBuildImmutableRepository(unittest.TestCase):
                         "path": FIXTURE_WORKFLOW_PATH,
                         "head_branch": FIXTURE_BRANCH,
                         "conclusion": "success",
+                        "status": "completed",
+                        "event": "push",
+                        "repository": {"full_name": FIXTURE_SOURCE_REPO},
+                        "workflow_id": 211623879,
                     }
                 if "/actions/runs/" in url and "/artifacts" in url:
                     return {
+                        "total_count": 2,
                         "artifacts": [
                             {
                                 "name": "validation-evidence",
                                 "id": 1,
                                 "expired": False,
+                                "created_at": "2026-07-01T00:00:00Z",
+                                "expires_at": "2026-07-31T00:00:00Z",
                                 "archive_download_url": "https://example.invalid/evidence.zip",
+                                "workflow_run": {"id": FIXTURE_RUN_ID},
                             },
                             {
                                 "name": "addon-package",
                                 "id": 2,
                                 "expired": False,
+                                "created_at": "2026-07-01T00:00:00Z",
+                                "expires_at": "2026-07-31T00:00:00Z",
                                 "archive_download_url": "https://example.invalid/package.zip",
+                                "workflow_run": {"id": FIXTURE_RUN_ID},
                             },
-                        ]
+                        ],
                     }
                 raise RuntimeError(f"Unexpected URL: {url}")
 
@@ -1362,6 +1649,14 @@ class TestSourceTokenIsolation(unittest.TestCase):
         "repo": "plugin.video.twitch",
         "addon_id": "plugin.video.twitch",
         "branch": "main",
+        "publication_enabled": True,
+        "publication_branch": "develop",
+        "validation_workflow": "Add-on Validations",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_id": 211623879,
+        "package_artifact_name": "addon-package",
+        "evidence_artifact_name": "validation-evidence",
+        "runtime_entries": ("addon.xml", "changelog.txt", "resources/"),
     }
 
     def _build_with_mock(self, root, dispatch_payload, api_get, download):
@@ -1377,6 +1672,7 @@ class TestSourceTokenIsolation(unittest.TestCase):
             root = _make_repo_root(tmpdir)
             with (
                 mock.patch.dict(os.environ, {}, clear=True),
+                mock.patch.object(builder, "ADDONS", [self._target_addon_config]),
                 self.assertRaises(RuntimeError) as ctx,
             ):
                 builder.build_immutable_repository(_valid_dispatch(), root)
@@ -1389,6 +1685,7 @@ class TestSourceTokenIsolation(unittest.TestCase):
                 mock.patch.dict(
                     os.environ, {"SOURCE_GITHUB_TOKEN": "   "}, clear=False
                 ),
+                mock.patch.object(builder, "ADDONS", [self._target_addon_config]),
                 self.assertRaises(RuntimeError) as ctx,
             ):
                 builder.build_immutable_repository(_valid_dispatch(), root)
@@ -1413,30 +1710,36 @@ class TestSourceTokenIsolation(unittest.TestCase):
                 f"{builder.GH_API}/repos/{FIXTURE_SOURCE_REPO}/git/ref/heads/"
                 f"{FIXTURE_BRANCH}"
             )
-            artifacts_url = f"{run_url}/artifacts"
+            artifacts_base = f"{run_url}/artifacts"
             evidence_url = "https://example.invalid/evidence.zip"
             package_url = "https://example.invalid/package.zip"
+            artifacts_payload = {
+                "total_count": 2,
+                "artifacts": [
+                    {
+                        "name": "validation-evidence",
+                        "id": 1,
+                        "expired": False,
+                        "created_at": "2026-07-01T00:00:00Z",
+                        "expires_at": "2026-07-31T00:00:00Z",
+                        "archive_download_url": evidence_url,
+                        "workflow_run": {"id": FIXTURE_RUN_ID},
+                    },
+                    {
+                        "name": "addon-package",
+                        "id": 2,
+                        "expired": False,
+                        "created_at": "2026-07-01T00:00:00Z",
+                        "expires_at": "2026-07-31T00:00:00Z",
+                        "archive_download_url": package_url,
+                        "workflow_run": {"id": FIXTURE_RUN_ID},
+                    },
+                ],
+            }
             responses = {
                 run_url: json.dumps(_valid_run()).encode(),
                 ref_url: json.dumps({"object": {"sha": FIXTURE_SHA}}).encode(),
-                artifacts_url: json.dumps(
-                    {
-                        "artifacts": [
-                            {
-                                "name": "validation-evidence",
-                                "id": 1,
-                                "expired": False,
-                                "archive_download_url": evidence_url,
-                            },
-                            {
-                                "name": "addon-package",
-                                "id": 2,
-                                "expired": False,
-                                "archive_download_url": package_url,
-                            },
-                        ]
-                    }
-                ).encode(),
+                artifacts_base: json.dumps(artifacts_payload).encode(),
                 evidence_url: evidence_archive.read_bytes(),
                 package_url: package_archive.read_bytes(),
             }
@@ -1447,7 +1750,12 @@ class TestSourceTokenIsolation(unittest.TestCase):
                 captured_api_requests.append(
                     (request.full_url, request.get_header("Authorization"))
                 )
-                return io.BytesIO(responses[request.full_url])
+                for key, value in responses.items():
+                    if request.full_url == key or request.full_url.startswith(
+                        key + "?"
+                    ):
+                        return io.BytesIO(value)
+                raise RuntimeError(f"Unexpected URL: {request.full_url}")
 
             def download_urlopen(request):
                 captured_download_requests.append(
@@ -1477,7 +1785,7 @@ class TestSourceTokenIsolation(unittest.TestCase):
                 [
                     (run_url, "token source-tok-abc"),
                     (ref_url, "token source-tok-abc"),
-                    (artifacts_url, "token source-tok-abc"),
+                    (f"{artifacts_base}?per_page=100&page=1", "token source-tok-abc"),
                     (ref_url, "token source-tok-abc"),
                 ],
             )
@@ -1509,20 +1817,27 @@ class TestSourceTokenIsolation(unittest.TestCase):
                     return _valid_run()
                 if "/actions/runs/" in url and "/artifacts" in url:
                     return {
+                        "total_count": 2,
                         "artifacts": [
                             {
                                 "name": "validation-evidence",
                                 "id": 1,
                                 "expired": False,
+                                "created_at": "2026-07-01T00:00:00Z",
+                                "expires_at": "2026-07-31T00:00:00Z",
                                 "archive_download_url": "https://example.invalid/evidence.zip",
+                                "workflow_run": {"id": FIXTURE_RUN_ID},
                             },
                             {
                                 "name": "addon-package",
                                 "id": 2,
                                 "expired": False,
+                                "created_at": "2026-07-01T00:00:00Z",
+                                "expires_at": "2026-07-31T00:00:00Z",
                                 "archive_download_url": "https://example.invalid/package.zip",
+                                "workflow_run": {"id": FIXTURE_RUN_ID},
                             },
-                        ]
+                        ],
                     }
                 raise RuntimeError(f"Unexpected URL: {url}")
 
@@ -1910,6 +2225,49 @@ class TestSourceDownloadRedirectOriginNormalization(unittest.TestCase):
         self.assertIsNone(result.get_header("Authorization"))
 
 
+class TestTrustBoundaryBypassRegressions(unittest.TestCase):
+    """Focused regression tests for the two required attack vectors."""
+
+    def _enabled_addon(self):
+        config = next(
+            c.copy()
+            for c in builder.ADDONS
+            if f"{c['owner']}/{c['repo']}" == FIXTURE_SOURCE_REPO
+        )
+        config["publication_enabled"] = True
+        return config
+
+    def test_same_name_untrusted_workflow_path_is_rejected(self):
+        """A run with the approved display name but wrong workflow_id at an
+        untrusted workflow path must fail even if sender input tries to match it."""
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError) as ctx:
+                builder.validate_dispatch_payload(
+                    _valid_dispatch(
+                        validation_workflow="Add-on Validations",
+                        validation_workflow_path=(
+                            ".github/workflows/untrusted.yml@develop"
+                        ),
+                    )
+                )
+            error = str(ctx.exception)
+            self.assertIn("does not match approved path", error)
+
+    def test_altered_artifact_names_from_sender_are_rejected(self):
+        """Sender-selected package or evidence artifact names must be rejected."""
+        with mock.patch.object(builder, "ADDONS", [self._enabled_addon()]):
+            with self.assertRaises(RuntimeError) as ctx:
+                builder.validate_dispatch_payload(
+                    _valid_dispatch(package_artifact_name="malicious-package")
+                )
+            self.assertIn("unknown fields", str(ctx.exception))
+            with self.assertRaises(RuntimeError) as ctx:
+                builder.validate_dispatch_payload(
+                    _valid_dispatch(evidence_artifact_name="malicious-evidence")
+                )
+            self.assertIn("unknown fields", str(ctx.exception))
+
+
 class TestImmutablePublicationWorkflows(unittest.TestCase):
     def test_repository_workflow_accepts_only_validated_publications(self):
         workflow = (
@@ -1921,18 +2279,26 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
         self.assertNotIn("workflow_dispatch:", workflow)
         self.assertNotIn("\n  push:", workflow)
 
-    def test_notifier_forwards_the_validated_run_branch(self):
+    def test_notifier_template_calls_pinned_reusable_workflow(self):
         workflow = (
             Path(__file__).parents[1] / "addon-workflow-templates/notify-repository.yml"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("event-type: validated-addon-publication", workflow)
-        self.assertIn("workflow_run.head_branch == 'develop'", workflow)
-        self.assertIn(
-            '"expected_branch": "${{ steps.evidence.outputs.head_branch }}"',
+        self.assertRegex(
             workflow,
+            r"uses: Serph91P/repository\.serph91p/\.github/workflows/"
+            r"reusable-notify-repository\.yml@[0-9a-f]{40}",
         )
-        self.assertNotIn("workflow_run.head_branch == 'main'", workflow)
+        self.assertNotIn("repository-dispatch", workflow)
+        self.assertIn("expected_branch: develop", workflow)
+
+    def test_notifier_template_uses_fixed_workflow_path(self):
+        workflow = (
+            Path(__file__).parents[1] / "addon-workflow-templates/notify-repository.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(".github/workflows/addon-validations.yml@develop", workflow)
+        self.assertNotIn("${{ github.event.workflow_run.path }}", workflow)
 
     def test_workflow_maps_source_artifact_token_separately(self):
         workflow = (
@@ -1950,6 +2316,20 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
         self.assertNotIn("SOURCE_GITHUB_TOKEN", notify)
         self.assertNotIn("SOURCE_ARTIFACT_TOKEN", notify)
         self.assertNotIn("source_token", notify)
+
+    def test_target_policy_is_bound_per_source_in_addons(self):
+        for config in builder.ADDONS:
+            with self.subTest(source=f"{config['owner']}/{config['repo']}"):
+                self.assertEqual(
+                    config["validation_workflow_path"],
+                    ".github/workflows/addon-validations.yml@develop",
+                )
+                self.assertEqual(config["publication_branch"], "develop")
+                self.assertEqual(config["package_artifact_name"], "addon-package")
+                self.assertEqual(
+                    config["evidence_artifact_name"], "validation-evidence"
+                )
+                self.assertFalse(config["publication_enabled"])
 
 
 if __name__ == "__main__":
