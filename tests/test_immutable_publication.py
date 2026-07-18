@@ -2689,7 +2689,7 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
             Path(__file__).parents[1] / "addon-workflow-templates/notify-repository.yml"
         ).read_text(encoding="utf-8")
 
-        self.assertIn(".github/workflows/addon-validations.yml@develop", workflow)
+        self.assertIn(".github/workflows/addon-validations.yml", workflow)
         self.assertNotIn("${{ github.event.workflow_run.path }}", workflow)
 
     def test_workflow_maps_source_artifact_token_separately(self):

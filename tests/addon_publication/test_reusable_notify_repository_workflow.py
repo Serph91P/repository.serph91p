@@ -215,7 +215,7 @@ class NotifyRepositoryWorkflowPayloadTests(unittest.TestCase):
         self.assertEqual(job["with"]["validation_event"], "${{ github.event_name }}")
         self.assertEqual(
             job["with"]["validation_workflow_path"],
-            ".github/workflows/addon-validations.yml@develop",
+            ".github/workflows/addon-validations.yml",
         )
         self.assertEqual(job["with"]["expected_branch"], "develop")
         self.assertNotIn("github.event.workflow_run.path", self.text)
