@@ -1,5 +1,6 @@
 import re
 import unittest
+import urllib.request
 from pathlib import Path
 
 import yaml
@@ -174,6 +175,18 @@ class NotifyRepositoryWorkflowPayloadTests(unittest.TestCase):
         )
         self.assertNotIn("repository-dispatch", self.text)
         self.assertNotRegex(self.text, r"uses:\s+[^\s]+@v\d+")
+
+    def test_template_inputs_match_exact_pinned_reusable_workflow(self):
+        job = self.workflow["jobs"]["notify-repository"]
+        pin = job["uses"].rsplit("@", 1)[1]
+        url = (
+            "https://raw.githubusercontent.com/Serph91P/repository.serph91p/"
+            f"{pin}/.github/workflows/reusable-notify-repository.yml"
+        )
+        with urllib.request.urlopen(url, timeout=30) as response:
+            pinned = yaml.load(response.read(), Loader=yaml.BaseLoader)
+        declared = set(pinned["on"]["workflow_call"]["inputs"])
+        self.assertLessEqual(set(job["with"]), declared)
 
     def test_template_permissions_preserve_caller_oidc(self):
         job = self.workflow["jobs"]["notify-repository"]

@@ -34,7 +34,7 @@ jobs:
       actions: read
       contents: read
       id-token: write
-    uses: Serph91P/repository.serph91p/.github/workflows/reusable-notify-repository.yml@dcbf05c71e609e7effef13444984869bfa7196fb
+    uses: Serph91P/repository.serph91p/.github/workflows/reusable-notify-repository.yml@51c044b2172e6a1c275b0816dd017430140e9f5f
     with:
       source_repository: ${{ github.repository }}
       candidate_sha: ${{ github.sha }}
