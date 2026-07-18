@@ -755,7 +755,59 @@ class TestFetchValidatedRunArtifacts(unittest.TestCase):
             )
         self.assertEqual(len(calls), 2)
 
-    def test_artifact_retention_must_be_exact(self):
+    def test_artifact_retention_allows_one_second_timestamp_rounding(self):
+        api_get, _calls = self.fetch(
+            [
+                {
+                    "total_count": 2,
+                    "artifacts": [
+                        self.artifact(
+                            "addon-package",
+                            1,
+                            expires_at="2026-07-30T23:59:59Z",
+                        ),
+                        self.artifact("validation-evidence", 2),
+                    ],
+                }
+            ]
+        )
+        with mock.patch.object(builder, "source_github_api_get", side_effect=api_get):
+            selected = builder.fetch_validated_run_artifacts(
+                FIXTURE_SOURCE_REPO,
+                FIXTURE_RUN_ID,
+                self.source_config,
+                now=datetime.datetime(2026, 7, 17, tzinfo=datetime.timezone.utc),
+            )
+        self.assertEqual(set(selected), {"addon-package", "validation-evidence"})
+
+    def test_artifact_retention_rejects_two_seconds_short(self):
+        api_get, _calls = self.fetch(
+            [
+                {
+                    "total_count": 2,
+                    "artifacts": [
+                        self.artifact(
+                            "addon-package",
+                            1,
+                            expires_at="2026-07-30T23:59:58Z",
+                        ),
+                        self.artifact("validation-evidence", 2),
+                    ],
+                }
+            ]
+        )
+        with (
+            mock.patch.object(builder, "source_github_api_get", side_effect=api_get),
+            self.assertRaisesRegex(RuntimeError, "retention"),
+        ):
+            builder.fetch_validated_run_artifacts(
+                FIXTURE_SOURCE_REPO,
+                FIXTURE_RUN_ID,
+                self.source_config,
+                now=datetime.datetime(2026, 7, 17, tzinfo=datetime.timezone.utc),
+            )
+
+    def test_artifact_retention_rejects_above_thirty_days(self):
         api_get, _calls = self.fetch(
             [
                 {
