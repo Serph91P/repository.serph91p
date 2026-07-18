@@ -186,7 +186,7 @@ class PackageBuilderTests(unittest.TestCase):
 
     def test_source_normalized_and_casefold_collisions_are_rejected(self):
         collision_sets = [
-            ("resources/Readme.txt", "resources/README.txt"),
+            ("resources/Data.txt", "resources/DATA.txt"),
             ("resources/café.txt", "resources/café.txt"),
         ]
         for index, names in enumerate(collision_sets):
@@ -200,6 +200,31 @@ class PackageBuilderTests(unittest.TestCase):
                     self.build(f"collision-{index}")
             for path in created:
                 path.unlink()
+
+    def test_repository_only_members_nested_under_runtime_are_rejected(self):
+        denied = (
+            "resources/generated.pyc",
+            "resources/__pycache__/generated.py",
+            "resources/.github/workflows/publish.yml",
+            "resources/tests/test_runtime.py",
+            "resources/ReAdMe.MD",
+        )
+        for index, relative in enumerate(denied):
+            source = make_source(self.root / f"denied-source-{index}")
+            path = source / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"repository-only")
+            with self.subTest(relative=relative):
+                with self.assertRaisesRegex(builder.PackageError, "repository-only"):
+                    builder.build_package(
+                        source,
+                        self.root / f"denied-output-{index}",
+                        ADDON_ID,
+                        ALLOWLIST,
+                        1,
+                        SHA,
+                        SHA,
+                    )
 
     def test_unapproved_or_missing_manifest_reference_is_rejected(self):
         (self.source / "addon.xml").write_text(
@@ -298,6 +323,27 @@ class ArchiveValidatorTests(unittest.TestCase):
             archive.writestr(info, "../../outside")
         with self.assertRaisesRegex(builder.PackageError, "regular file"):
             builder.validate_package_archive(path, ADDON_ID, ALLOWLIST)
+
+    def test_archive_rejects_repository_only_members_nested_under_runtime(self):
+        valid = [
+            (f"{ADDON_ID}/addon.xml", addon_xml().encode("utf-8")),
+            (f"{ADDON_ID}/default.py", b"print('ok')\n"),
+            (f"{ADDON_ID}/resources/icon.png", b"icon"),
+        ]
+        denied = (
+            "resources/generated.pyc",
+            "resources/__pycache__/generated.py",
+            "resources/.github/workflows/publish.yml",
+            "resources/tests/test_runtime.py",
+            "resources/readME.rst",
+        )
+        for relative in denied:
+            with self.subTest(relative=relative):
+                path = self.archive(
+                    valid + [(f"{ADDON_ID}/{relative}", b"repository-only")]
+                )
+                with self.assertRaisesRegex(builder.PackageError, "repository-only"):
+                    builder.validate_package_archive(path, ADDON_ID, ALLOWLIST)
 
 
 if __name__ == "__main__":

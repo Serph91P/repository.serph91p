@@ -624,6 +624,29 @@ class SourceArchiveValidationTests(unittest.TestCase):
                 with self.subTest(label=label), self.assertRaises(RuntimeError):
                     builder.create_source_package(source_zip, "plugin.example", root)
 
+    def test_source_fallback_rejects_nested_repository_only_members(self):
+        denied = (
+            "resources/generated.pyc",
+            "resources/__pycache__/generated.py",
+            "resources/.github/workflows/publish.yml",
+            "resources/tests/test_runtime.py",
+            "resources/readME.md",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index, relative in enumerate(denied):
+                source_zip = root / f"denied-{index}.zip"
+                with zipfile.ZipFile(source_zip, "w") as archive:
+                    archive.writestr(
+                        "repo-main/addon.xml", addon_xml("plugin.example", "1.0.0")
+                    )
+                    archive.writestr(f"repo-main/{relative}", b"repository-only")
+                with self.subTest(relative=relative):
+                    with self.assertRaisesRegex(RuntimeError, "repository-only"):
+                        builder.create_source_package(
+                            source_zip, "plugin.example", root
+                        )
+
 
 class SiteManifestTests(unittest.TestCase):
     def test_manifest_requires_advertised_packages_assets_and_coverage(self):

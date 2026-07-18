@@ -100,12 +100,33 @@ class ReusableWorkflowTests(unittest.TestCase):
     def test_checker_dependencies_are_fully_pinned_before_the_exact_source_install(self):
         steps = self.workflow["jobs"]["package"]["steps"]
         commands = "\n".join(step.get("run", "") for step in steps)
-        self.assertIn("addon-check-requirements.txt", commands)
-        self.assertIn("--no-deps", commands)
+        self.assertRegex(
+            commands,
+            r"python -m pip install --disable-pip-version-check \\\n"
+            r"\s+--require-hashes --no-deps \\\n"
+            r"\s+--requirement tooling/addon-publication/"
+            r"addon-check-requirements\.txt",
+        )
+        self.assertRegex(
+            commands,
+            r"python -m pip install --disable-pip-version-check \\\n"
+            r"\s+--no-deps --no-build-isolation \\\n"
+            r"\s+'git\+https://github\.com/xbmc/addon-check\.git@"
+            r"67be5c1eca23e01402a447f995e2216bd83202f3'",
+        )
         requirements = (
             ROOT / "addon-publication" / "addon-check-requirements.txt"
         ).read_text(encoding="utf-8")
-        entries = [line for line in requirements.splitlines() if line]
+        blocks = re.split(r"\n(?=[A-Za-z0-9])", requirements.strip())
+        entries = []
+        for block in blocks:
+            match = re.fullmatch(
+                r"([A-Za-z0-9_.-]+)==([^\s\\]+)"
+                r"(?: \\\n    --hash=sha256:[0-9a-f]{64})+",
+                block,
+            )
+            self.assertIsNotNone(match, block)
+            entries.append(f"{match.group(1)}=={match.group(2)}")
         self.assertEqual(
             entries,
             [
