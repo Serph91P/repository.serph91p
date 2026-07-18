@@ -534,7 +534,7 @@ class TestValidateGithubRun(unittest.TestCase):
             config,
         )
 
-    def test_valid_run_passes(self):
+    def test_matching_unsuffixed_workflow_path_and_branch_passes(self):
         self.validate(_valid_run())
 
     def test_wrong_run_id_is_rejected(self):
@@ -552,6 +552,26 @@ class TestValidateGithubRun(unittest.TestCase):
     def test_wrong_workflow_path_is_rejected(self):
         with self.assertRaises(RuntimeError):
             self.validate(_valid_run(path=".github/workflows/untrusted.yml"))
+    def test_suffixed_api_workflow_path_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            self.validate(_valid_run(path=f"{FIXTURE_WORKFLOW_PATH}@develop"))
+
+    def test_missing_or_malformed_api_workflow_path_is_rejected(self):
+        missing = _valid_run()
+        del missing["path"]
+        for run in (
+            missing,
+            _valid_run(path=""),
+            _valid_run(path=".github/workflows/nested/validations.yml"),
+        ):
+            with self.subTest(run=run), self.assertRaises(RuntimeError):
+                self.validate(run)
+
+    def test_missing_branch_is_rejected(self):
+        run = _valid_run()
+        del run["head_branch"]
+        with self.assertRaises(RuntimeError):
+            self.validate(run)
 
     def test_wrong_branch_is_rejected(self):
         with self.assertRaises(RuntimeError):

@@ -1062,15 +1062,21 @@ def validate_github_run(run_data, validation_run_id, validation_head_sha, source
             f"Run workflow name {run_data.get('name')!r} does not match "
             f"target policy workflow {source_config['validation_workflow']!r}"
         )
-    if run_data.get("path") != source_config["validation_workflow_path"]:
+    run_branch = run_data.get("head_branch")
+    if run_branch != source_config["publication_branch"]:
         raise RuntimeError(
-            f"Run workflow path {run_data.get('path')!r} does not match "
-            f"target policy path {source_config['validation_workflow_path']!r}"
-        )
-    if run_data.get("head_branch") != source_config["publication_branch"]:
-        raise RuntimeError(
-            f"Run head_branch {run_data.get('head_branch')!r} does not match "
+            f"Run head_branch {run_branch!r} does not match "
             f"target policy branch {source_config['publication_branch']!r}"
+        )
+    run_path = run_data.get("path")
+    if not isinstance(run_path, str) or not re.fullmatch(
+        r"\.github/workflows/[0-9A-Za-z_.-]+\.ya?ml", run_path
+    ):
+        raise RuntimeError(f"Run workflow path is malformed: {run_path!r}")
+    if run_path != source_config["validation_workflow_path"]:
+        raise RuntimeError(
+            f"Run workflow path {run_path!r} does not match "
+            f"target policy path {source_config['validation_workflow_path']!r}"
         )
     if run_data.get("status") != "completed":
         raise RuntimeError(
