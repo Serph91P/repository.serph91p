@@ -29,6 +29,7 @@ FIXTURE_PUBLICATION_ID = "plugin.video.twitch@3.1.8"
 FIXTURE_SOURCE_REPO = "Serph91P/plugin.video.twitch"
 FIXTURE_BRANCH = "develop"
 FIXTURE_WORKFLOW_PATH = ".github/workflows/addon-validations.yml@develop"
+FIXTURE_API_WORKFLOW_PATH = ".github/workflows/addon-validations.yml"
 FIXTURE_ARTIFACT_SHA256 = (
     "d83db0534b640f2283d9c7ded69d9f8406c274f13385cf045e2a77184058caaa"
 )
@@ -71,7 +72,7 @@ def _valid_run(**overrides):
         "head_sha": FIXTURE_SHA,
         "conclusion": "success",
         "name": "Add-on Validations",
-        "path": FIXTURE_WORKFLOW_PATH,
+        "path": FIXTURE_API_WORKFLOW_PATH,
         "head_branch": "develop",
         "status": "completed",
         "event": "push",
@@ -534,7 +535,7 @@ class TestValidateGithubRun(unittest.TestCase):
             config,
         )
 
-    def test_valid_run_passes(self):
+    def test_matching_unsuffixed_workflow_path_and_branch_passes(self):
         self.validate(_valid_run())
 
     def test_wrong_run_id_is_rejected(self):
@@ -551,7 +552,28 @@ class TestValidateGithubRun(unittest.TestCase):
 
     def test_wrong_workflow_path_is_rejected(self):
         with self.assertRaises(RuntimeError):
-            self.validate(_valid_run(path=".github/workflows/untrusted.yml@develop"))
+            self.validate(_valid_run(path=".github/workflows/untrusted.yml"))
+
+    def test_suffixed_api_workflow_path_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            self.validate(_valid_run(path=FIXTURE_WORKFLOW_PATH))
+
+    def test_missing_or_malformed_api_workflow_path_is_rejected(self):
+        missing = _valid_run()
+        del missing["path"]
+        for run in (
+            missing,
+            _valid_run(path=""),
+            _valid_run(path=".github/workflows/nested/validations.yml"),
+        ):
+            with self.subTest(run=run), self.assertRaises(RuntimeError):
+                self.validate(run)
+
+    def test_missing_branch_is_rejected(self):
+        run = _valid_run()
+        del run["head_branch"]
+        with self.assertRaises(RuntimeError):
+            self.validate(run)
 
     def test_wrong_branch_is_rejected(self):
         with self.assertRaises(RuntimeError):
@@ -1429,7 +1451,7 @@ class TestBuildImmutableRepository(unittest.TestCase):
                         "id": FIXTURE_RUN_ID,
                         "head_sha": FIXTURE_SHA,
                         "name": "Add-on Validations",
-                        "path": FIXTURE_WORKFLOW_PATH,
+                        "path": FIXTURE_API_WORKFLOW_PATH,
                         "head_branch": FIXTURE_BRANCH,
                         "conclusion": "success",
                         "status": "completed",
