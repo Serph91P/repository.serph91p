@@ -30,6 +30,7 @@ class ReusableNotifierWorkflowTests(unittest.TestCase):
                 "validation_run_id",
                 "validation_workflow",
                 "validation_workflow_path",
+                "validation_event",
                 "expected_branch",
                 "addon_id",
                 "addon_version",
@@ -140,6 +141,7 @@ class ReusableNotifierWorkflowTests(unittest.TestCase):
                 "validation_run_id",
                 "validation_workflow",
                 "validation_workflow_path",
+                "validation_event",
                 "expected_branch",
                 "addon_id",
                 "addon_version",
@@ -196,6 +198,7 @@ class NotifyRepositoryWorkflowPayloadTests(unittest.TestCase):
         self.assertEqual(job["with"]["candidate_sha"], "${{ github.sha }}")
         self.assertEqual(job["with"]["validation_run_id"], "${{ github.run_id }}")
         self.assertEqual(job["with"]["validation_workflow"], "Add-on Validations")
+        self.assertEqual(job["with"]["validation_event"], "${{ github.event_name }}")
         self.assertEqual(
             job["with"]["validation_workflow_path"],
             ".github/workflows/addon-validations.yml@develop",

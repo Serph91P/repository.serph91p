@@ -23,6 +23,10 @@ on:
         description: Exact validation workflow path including the @develop suffix.
         required: true
         type: string
+      validation_event:
+        description: Exact validation event, restricted to push or workflow_dispatch.
+        required: true
+        type: string
       expected_branch:
         description: Exact validated publication branch, which must be develop.
         required: true
@@ -143,6 +147,7 @@ jobs:
           VALIDATION_RUN_ID: ${{ inputs.validation_run_id }}
           VALIDATION_WORKFLOW: ${{ inputs.validation_workflow }}
           VALIDATION_WORKFLOW_PATH: ${{ inputs.validation_workflow_path }}
+          VALIDATION_EVENT: ${{ inputs.validation_event }}
           EXPECTED_BRANCH: ${{ inputs.expected_branch }}
           ADDON_ID: ${{ inputs.addon_id }}
           ADDON_VERSION: ${{ inputs.addon_version }}
@@ -159,6 +164,7 @@ jobs:
             --validation-run-id "${VALIDATION_RUN_ID}" \
             --validation-workflow "${VALIDATION_WORKFLOW}" \
             --validation-workflow-path "${VALIDATION_WORKFLOW_PATH}" \
+            --validation-event "${VALIDATION_EVENT}" \
             --expected-branch "${EXPECTED_BRANCH}" \
             --addon-id "${ADDON_ID}" \
             --addon-version "${ADDON_VERSION}" \

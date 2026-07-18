@@ -1016,7 +1016,7 @@ def validate_github_run(run_data, validation_run_id, validation_head_sha, source
     Compares the run directly against target policy values, not caller-supplied
     dispatch values. Requires exact run ID, candidate/head SHA, configured
     workflow name, configured path/ref, configured publication branch, completed
-    status, successful conclusion, push event, exact source repository, and
+    status, successful conclusion, approved event, exact source repository, and
     stable workflow ID when configured.
     """
     if not isinstance(run_data, dict):
@@ -1054,9 +1054,9 @@ def validate_github_run(run_data, validation_run_id, validation_head_sha, source
         raise RuntimeError(
             f"Run conclusion {run_data.get('conclusion')!r} is not 'success'"
         )
-    if run_data.get("event") != "push":
+    if run_data.get("event") not in {"push", "workflow_dispatch"}:
         raise RuntimeError(
-            f"Run event {run_data.get('event')!r} is not 'push'"
+            f"Run event {run_data.get('event')!r} is not approved"
         )
     run_repo = run_data.get("repository", {})
     if not isinstance(run_repo, dict) or run_repo.get("full_name") != (

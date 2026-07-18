@@ -534,9 +534,12 @@ class TestValidateGithubRun(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.validate(run)
 
+    def test_workflow_dispatch_event_is_accepted(self):
+        self.validate(_valid_run(event="workflow_dispatch"))
+
     def test_wrong_event_is_rejected(self):
         with self.assertRaises(RuntimeError) as ctx:
-            self.validate(_valid_run(event="workflow_dispatch"))
+            self.validate(_valid_run(event="pull_request"))
         self.assertIn("event", str(ctx.exception))
 
     def test_wrong_repository_is_rejected(self):

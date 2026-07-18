@@ -41,6 +41,7 @@ jobs:
       validation_run_id: ${{ github.run_id }}
       validation_workflow: Add-on Validations
       validation_workflow_path: .github/workflows/addon-validations.yml@develop
+      validation_event: ${{ github.event_name }}
       expected_branch: develop
       addon_id: ${{ inputs.addon_id }}
       addon_version: ${{ inputs.addon_version }}
