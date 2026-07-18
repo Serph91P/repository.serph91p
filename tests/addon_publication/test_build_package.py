@@ -206,6 +206,11 @@ class PackageBuilderTests(unittest.TestCase):
             "resources/generated.pyc",
             "resources/__pycache__/generated.py",
             "resources/.github/workflows/publish.yml",
+            "resources/WorkFlows/publish.yml",
+            "resources/.HeRmEs/config.yaml",
+            "resources/Requirements-Dev.TXT",
+            "resources/.GITIGNORE",
+            "resources/PyProject.TOML",
             "resources/tests/test_runtime.py",
             "resources/ReAdMe.MD",
         )
@@ -225,6 +230,29 @@ class PackageBuilderTests(unittest.TestCase):
                         SHA,
                         SHA,
                     )
+
+    def test_repository_only_policy_accepts_precise_runtime_near_matches(self):
+        accepted = (
+            "resources/workflows-helper.py",
+            "resources/.hermes-data.json",
+            "resources/requirements-device.txt",
+            "resources/gitignore.txt",
+            "resources/my-pyproject.toml",
+        )
+        for relative in accepted:
+            path = self.source / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"runtime")
+
+        result = self.build("accepted-near-matches")
+
+        with zipfile.ZipFile(result.package_path) as archive:
+            self.assertTrue(
+                all(
+                    f"{ADDON_ID}/{relative}" in archive.namelist()
+                    for relative in accepted
+                )
+            )
 
     def test_unapproved_or_missing_manifest_reference_is_rejected(self):
         (self.source / "addon.xml").write_text(
@@ -334,6 +362,11 @@ class ArchiveValidatorTests(unittest.TestCase):
             "resources/generated.pyc",
             "resources/__pycache__/generated.py",
             "resources/.github/workflows/publish.yml",
+            "resources/WorkFlows/publish.yml",
+            "resources/.HeRmEs/config.yaml",
+            "resources/Requirements-Dev.TXT",
+            "resources/.GITIGNORE",
+            "resources/PyProject.TOML",
             "resources/tests/test_runtime.py",
             "resources/readME.rst",
         )

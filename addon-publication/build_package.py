@@ -34,11 +34,18 @@ EVIDENCE_FIELDS = (
 REPOSITORY_ONLY_COMPONENTS = {
     ".git",
     ".github",
+    ".hermes",
     ".pytest_cache",
     ".mypy_cache",
     ".ruff_cache",
     "__pycache__",
     "tests",
+    "workflows",
+}
+REPOSITORY_ONLY_FILENAMES = {
+    ".gitignore",
+    "pyproject.toml",
+    "requirements-dev.txt",
 }
 
 
@@ -86,6 +93,7 @@ def _reject_repository_only_path(value):
     filename = parts[-1]
     if (
         any(part in REPOSITORY_ONLY_COMPONENTS for part in parts)
+        or filename in REPOSITORY_ONLY_FILENAMES
         or filename.endswith((".pyc", ".pyo"))
         or filename == "readme"
         or filename.startswith("readme.")

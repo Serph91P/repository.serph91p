@@ -744,6 +744,11 @@ class TestValidateArchiveTopology(unittest.TestCase):
             "resources/generated.pyc",
             "resources/__pycache__/generated.py",
             "resources/.github/workflows/publish.yml",
+            "resources/WorkFlows/publish.yml",
+            "resources/.HeRmEs/config.yaml",
+            "resources/Requirements-Dev.TXT",
+            "resources/.GITIGNORE",
+            "resources/PyProject.TOML",
             "resources/tests/test_runtime.py",
             "resources/READme.txt",
         )

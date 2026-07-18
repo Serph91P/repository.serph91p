@@ -134,11 +134,18 @@ MAX_ARTIFACT_PAGES = 100
 REPOSITORY_ONLY_COMPONENTS = {
     ".git",
     ".github",
+    ".hermes",
     ".pytest_cache",
     ".mypy_cache",
     ".ruff_cache",
     "__pycache__",
     "tests",
+    "workflows",
+}
+REPOSITORY_ONLY_FILENAMES = {
+    ".gitignore",
+    "pyproject.toml",
+    "requirements-dev.txt",
 }
 KODI_VERSION_RE = re.compile(
     r"^[0-9]+(?:\.[0-9]+)*(?:\+[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$",
@@ -480,6 +487,7 @@ def _reject_repository_only_path(value):
     filename = parts[-1]
     if (
         any(part in REPOSITORY_ONLY_COMPONENTS for part in parts)
+        or filename in REPOSITORY_ONLY_FILENAMES
         or filename.endswith((".pyc", ".pyo"))
         or filename == "readme"
         or filename.startswith("readme.")
@@ -573,8 +581,14 @@ def _validated_archive(archive, addon_id, release_version, release_filename):
     return addon, assets
 
 
-def _validated_source_members(archive, addon_id):
+def _validated_source_members(archive, addon_id, runtime_entries):
     """Validate a GitHub source ZIP and return its embedded identity and files."""
+    if not runtime_entries:
+        raise RuntimeError("Runtime allowlist is empty")
+    allowed_files = {entry for entry in runtime_entries if not entry.endswith("/")}
+    directory_prefixes = tuple(
+        entry for entry in runtime_entries if entry.endswith("/")
+    )
     roots = set()
     canonical_names = set()
     addon_xml_members = []
@@ -600,10 +614,15 @@ def _validated_source_members(archive, addon_id):
         if info.is_dir():
             continue
         relative_path = PurePosixPath(*path.parts[1:])
+        relative = relative_path.as_posix()
+        if relative not in allowed_files and not any(
+            relative.startswith(prefix) for prefix in directory_prefixes
+        ):
+            continue
         _reject_repository_only_path(relative_path)
         files.append((relative_path, info))
         members[relative_name] = info
-        if relative_path.name.casefold() == "addon.xml":
+        if relative == "addon.xml":
             addon_xml_members.append(relative_name)
 
     if len(roots) != 1:
@@ -631,16 +650,21 @@ def _validated_source_members(archive, addon_id):
         raise RuntimeError(
             f"Configured addon ID {addon_id!r} does not match embedded ID {embedded_id!r}"
         )
+    validate_runtime_allowlist(
+        [f"{addon_id}/{relative.as_posix()}" for relative, _info in files],
+        addon_id,
+        runtime_entries,
+    )
     return embedded_id, embedded_version, files
 
 
-def create_source_package(source_zip, addon_id, destination):
+def create_source_package(source_zip, addon_id, destination, runtime_entries):
     """Securely repackage a GitHub source archive as a Kodi addon ZIP."""
     _validated_filename_component(addon_id, "addon ID")
     try:
         with zipfile.ZipFile(source_zip, "r") as source:
             embedded_id, embedded_version, files = _validated_source_members(
-                source, addon_id
+                source, addon_id, runtime_entries
             )
             filename = f"{embedded_id}-{embedded_version}.zip"
             package = destination / filename
@@ -1581,7 +1605,10 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
                         _source_archive_url(owner, repo, branch), source_zip
                     )
                     zip_path, version, filename = create_source_package(
-                        source_zip, other_addon_id, other_download_dir
+                        source_zip,
+                        other_addon_id,
+                        other_download_dir,
+                        config["runtime_entries"],
                     )
                 else:
                     release_url, version, filename = release
@@ -1682,7 +1709,10 @@ def build_repository():
                 source_zip = download_dir / "source.zip"
                 download_file(_source_archive_url(owner, repo, branch), source_zip)
                 zip_path, version, filename = create_source_package(
-                    source_zip, addon_id, download_dir
+                    source_zip,
+                    addon_id,
+                    download_dir,
+                    config["runtime_entries"],
                 )
             else:
                 release_url, version, filename = release
