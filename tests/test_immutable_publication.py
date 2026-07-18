@@ -2795,7 +2795,11 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
                 self.assertEqual(
                     config["evidence_artifact_name"], "validation-evidence"
                 )
-                self.assertFalse(config["publication_enabled"])
+                expected_enabled = config["addon_id"] in {
+                    "plugin.video.plexkodiconnect.movies",
+                    "plugin.video.plexkodiconnect.tvshows",
+                }
+                self.assertEqual(config["publication_enabled"], expected_enabled)
 
 
 if __name__ == "__main__":

@@ -20,7 +20,7 @@ on:
         required: true
         type: string
       validation_workflow_path:
-        description: Exact validation workflow path including the @develop suffix.
+        description: Exact canonical validation workflow path returned by the Actions Runs API.
         required: true
         type: string
       validation_event:

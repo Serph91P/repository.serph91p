@@ -793,6 +793,12 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual("main", configs["plugin.video.plexkodiconnect"]["branch"])
         self.assertIn("plugin.video.plexkodiconnect.movies", configs)
         self.assertIn("plugin.video.plexkodiconnect.tvshows", configs)
+        self.assertTrue(
+            configs["plugin.video.plexkodiconnect.movies"]["publication_enabled"]
+        )
+        self.assertTrue(
+            configs["plugin.video.plexkodiconnect.tvshows"]["publication_enabled"]
+        )
 
     def test_repository_urls_match_flat_pages_layout(self):
         metadata = ET.parse(Path(builder.__file__).parents[1] / "addon.xml").getroot()

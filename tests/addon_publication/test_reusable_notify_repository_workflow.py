@@ -44,6 +44,10 @@ class ReusableNotifierWorkflowTests(unittest.TestCase):
             self.assertEqual(spec["required"], "true")
             self.assertTrue(spec["description"].strip())
         self.assertEqual(call["inputs"]["validation_run_id"]["type"], "number")
+        self.assertNotIn(
+            "@develop",
+            call["inputs"]["validation_workflow_path"]["description"],
+        )
         self.assertEqual(set(call["secrets"]), {"REPO_DISPATCH_TOKEN"})
         self.assertEqual(call["secrets"]["REPO_DISPATCH_TOKEN"]["required"], "true")
 
