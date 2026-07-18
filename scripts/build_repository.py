@@ -1122,8 +1122,8 @@ def fetch_validated_run_artifacts(source_repo, run_id, source_config, now=None):
     record, requires exactly two total artifacts (one package, one evidence),
     rejects unexpected names, duplicate required names (including on later
     pages), duplicate IDs, malformed fields, expired or not-currently-live
-    artifacts, and retention other than exactly 30 days. Does not download
-    before the complete set is validated.
+    artifacts, and retention outside the one-second timestamp tolerance below
+    30 days. Does not download before the complete set is validated.
     """
     if now is None:
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -1241,10 +1241,13 @@ def fetch_validated_run_artifacts(source_repo, run_id, source_config, now=None):
                     f"malformed timestamp: {error}"
                 ) from error
             retention = expires_dt - created_dt
-            if retention != datetime.timedelta(days=ARTIFACT_RETENTION_DAYS):
+            expected_retention = datetime.timedelta(days=ARTIFACT_RETENTION_DAYS)
+            minimum_retention = expected_retention - datetime.timedelta(seconds=1)
+            if not minimum_retention <= retention <= expected_retention:
                 raise RuntimeError(
                     f"Artifact {name!r} id {artifact_id} has retention "
-                    f"{retention}, expected {ARTIFACT_RETENTION_DAYS} days"
+                    f"{retention}, expected between {minimum_retention} and "
+                    f"{expected_retention}"
                 )
             if now < created_dt or now >= expires_dt:
                 raise RuntimeError(
