@@ -34,13 +34,14 @@ jobs:
       actions: read
       contents: read
       id-token: write
-    uses: Serph91P/repository.serph91p/.github/workflows/reusable-notify-repository.yml@dcbf05c71e609e7effef13444984869bfa7196fb
+    uses: Serph91P/repository.serph91p/.github/workflows/reusable-notify-repository.yml@d7434c26c4d49d42496154dd58ae78e1da6f49d6
     with:
       source_repository: ${{ github.repository }}
       candidate_sha: ${{ github.sha }}
       validation_run_id: ${{ github.run_id }}
       validation_workflow: Add-on Validations
-      validation_workflow_path: .github/workflows/addon-validations.yml@develop
+      validation_workflow_path: .github/workflows/addon-validations.yml
+      validation_event: ${{ github.event_name }}
       expected_branch: develop
       addon_id: ${{ inputs.addon_id }}
       addon_version: ${{ inputs.addon_version }}

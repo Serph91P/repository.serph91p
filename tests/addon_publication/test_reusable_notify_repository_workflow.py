@@ -1,5 +1,6 @@
 import re
 import unittest
+import urllib.request
 from pathlib import Path
 
 import yaml
@@ -30,6 +31,7 @@ class ReusableNotifierWorkflowTests(unittest.TestCase):
                 "validation_run_id",
                 "validation_workflow",
                 "validation_workflow_path",
+                "validation_event",
                 "expected_branch",
                 "addon_id",
                 "addon_version",
@@ -42,6 +44,10 @@ class ReusableNotifierWorkflowTests(unittest.TestCase):
             self.assertEqual(spec["required"], "true")
             self.assertTrue(spec["description"].strip())
         self.assertEqual(call["inputs"]["validation_run_id"]["type"], "number")
+        self.assertNotIn(
+            "@develop",
+            call["inputs"]["validation_workflow_path"]["description"],
+        )
         self.assertEqual(set(call["secrets"]), {"REPO_DISPATCH_TOKEN"})
         self.assertEqual(call["secrets"]["REPO_DISPATCH_TOKEN"]["required"], "true")
 
@@ -141,6 +147,7 @@ class ReusableNotifierWorkflowTests(unittest.TestCase):
                 "validation_run_id",
                 "validation_workflow",
                 "validation_workflow_path",
+                "validation_event",
                 "expected_branch",
                 "addon_id",
                 "addon_version",
@@ -173,6 +180,18 @@ class NotifyRepositoryWorkflowPayloadTests(unittest.TestCase):
         self.assertNotIn("repository-dispatch", self.text)
         self.assertNotRegex(self.text, r"uses:\s+[^\s]+@v\d+")
 
+    def test_template_inputs_match_exact_pinned_reusable_workflow(self):
+        job = self.workflow["jobs"]["notify-repository"]
+        pin = job["uses"].rsplit("@", 1)[1]
+        url = (
+            "https://raw.githubusercontent.com/Serph91P/repository.serph91p/"
+            f"{pin}/.github/workflows/reusable-notify-repository.yml"
+        )
+        with urllib.request.urlopen(url, timeout=30) as response:
+            pinned = yaml.load(response.read(), Loader=yaml.BaseLoader)
+        declared = set(pinned["on"]["workflow_call"]["inputs"])
+        self.assertLessEqual(set(job["with"]), declared)
+
     def test_template_permissions_preserve_caller_oidc(self):
         job = self.workflow["jobs"]["notify-repository"]
         self.assertEqual(
@@ -197,9 +216,10 @@ class NotifyRepositoryWorkflowPayloadTests(unittest.TestCase):
         self.assertEqual(job["with"]["candidate_sha"], "${{ github.sha }}")
         self.assertEqual(job["with"]["validation_run_id"], "${{ github.run_id }}")
         self.assertEqual(job["with"]["validation_workflow"], "Add-on Validations")
+        self.assertEqual(job["with"]["validation_event"], "${{ github.event_name }}")
         self.assertEqual(
             job["with"]["validation_workflow_path"],
-            ".github/workflows/addon-validations.yml@develop",
+            ".github/workflows/addon-validations.yml",
         )
         self.assertEqual(job["with"]["expected_branch"], "develop")
         self.assertNotIn("github.event.workflow_run.path", self.text)

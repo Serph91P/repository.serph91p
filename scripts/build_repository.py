@@ -25,7 +25,7 @@ ADDONS = [
         "publication_enabled": False,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 234989014,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -39,7 +39,7 @@ ADDONS = [
         "publication_enabled": False,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 211623879,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -53,7 +53,7 @@ ADDONS = [
         "publication_enabled": False,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 211624357,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -67,7 +67,7 @@ ADDONS = [
         "publication_enabled": False,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 234989955,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -89,10 +89,10 @@ ADDONS = [
         "repo": "plugin.video.plexkodiconnect.movies",
         "addon_id": "plugin.video.plexkodiconnect.movies",
         "branch": "main",
-        "publication_enabled": False,
+        "publication_enabled": True,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 235177143,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -103,10 +103,10 @@ ADDONS = [
         "repo": "plugin.video.plexkodiconnect.tvshows",
         "addon_id": "plugin.video.plexkodiconnect.tvshows",
         "branch": "main",
-        "publication_enabled": False,
+        "publication_enabled": True,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 235177212,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -120,7 +120,7 @@ ADDONS = [
         "publication_enabled": False,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 234990067,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -938,12 +938,12 @@ def validate_dispatch_payload(payload):
     if (
         not isinstance(validation_workflow_path, str)
         or not re.fullmatch(
-            r"\.github/workflows/[0-9A-Za-z_.-]+\.ya?ml@develop",
+            r"\.github/workflows/[0-9A-Za-z_.-]+\.ya?ml",
             validation_workflow_path,
         )
     ):
         raise RuntimeError(
-            "Dispatch validation_workflow_path must identify a develop workflow run"
+            "Dispatch validation_workflow_path must be a canonical API path"
         )
     if validation_workflow_path != source_config["validation_workflow_path"]:
         raise RuntimeError(
@@ -1042,7 +1042,7 @@ def validate_github_run(run_data, validation_run_id, validation_head_sha, source
     Compares the run directly against target policy values, not caller-supplied
     dispatch values. Requires exact run ID, candidate/head SHA, configured
     workflow name, configured path/ref, configured publication branch, completed
-    status, successful conclusion, push event, exact source repository, and
+    status, successful conclusion, approved event, exact source repository, and
     stable workflow ID when configured.
     """
     if not isinstance(run_data, dict):
@@ -1073,10 +1073,9 @@ def validate_github_run(run_data, validation_run_id, validation_head_sha, source
         r"\.github/workflows/[0-9A-Za-z_.-]+\.ya?ml", run_path
     ):
         raise RuntimeError(f"Run workflow path is malformed: {run_path!r}")
-    run_workflow_identity = f"{run_path}@{run_branch}"
-    if run_workflow_identity != source_config["validation_workflow_path"]:
+    if run_path != source_config["validation_workflow_path"]:
         raise RuntimeError(
-            f"Run workflow identity {run_workflow_identity!r} does not match "
+            f"Run workflow path {run_path!r} does not match "
             f"target policy path {source_config['validation_workflow_path']!r}"
         )
     if run_data.get("status") != "completed":
@@ -1087,9 +1086,9 @@ def validate_github_run(run_data, validation_run_id, validation_head_sha, source
         raise RuntimeError(
             f"Run conclusion {run_data.get('conclusion')!r} is not 'success'"
         )
-    if run_data.get("event") != "push":
+    if run_data.get("event") not in {"push", "workflow_dispatch"}:
         raise RuntimeError(
-            f"Run event {run_data.get('event')!r} is not 'push'"
+            f"Run event {run_data.get('event')!r} is not approved"
         )
     run_repo = run_data.get("repository", {})
     if not isinstance(run_repo, dict) or run_repo.get("full_name") != (

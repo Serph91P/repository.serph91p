@@ -16,7 +16,8 @@ The reusable workflow requires these inputs:
 | `candidate_sha` | Exact lowercase 40-character commit SHA validated by the source run. |
 | `validation_run_id` | Positive numeric ID of the completed source validation run. |
 | `validation_workflow` | Exact source validation workflow name. |
-| `validation_workflow_path` | Exact source workflow path reported by GitHub, including its `@develop` suffix. |
+| `validation_workflow_path` | Exact canonical source workflow path reported by the Actions Runs API, without a ref suffix. |
+| `validation_event` | Exact source event, restricted to `push` or `workflow_dispatch`. |
 | `expected_branch` | Must be `develop`. |
 | `addon_id` | Exact configured add-on ID. |
 | `addon_version` | Exact configured add-on version. |
@@ -25,8 +26,10 @@ The reusable workflow requires these inputs:
 | `publication_id` | Exact publication identity, `<addon_id>@<addon_version>`. |
 
 A source workflow can enforce the validation and packaging order as follows. The
-workflow itself must run on a `push` to `develop`, and `validation_workflow_path`
-must be fixed to the approved workflow path on the develop branch.
+workflow must run on a `push` or explicit `workflow_dispatch` for `develop`, and
+`validation_workflow_path` must be fixed to the approved canonical API path.
+The branch is bound separately through `expected_branch`. `workflow_dispatch` provides a bootstrap after the notifier has
+first been deployed to the default branch.
 
 ```yaml
 jobs:
@@ -58,7 +61,8 @@ jobs:
       candidate_sha: ${{ github.sha }}
       validation_run_id: ${{ github.run_id }}
       validation_workflow: Source validation
-      validation_workflow_path: .github/workflows/addon-validations.yml@develop
+      validation_workflow_path: .github/workflows/addon-validations.yml
+      validation_event: ${{ github.event_name }}
       expected_branch: develop
       addon_id: plugin.video.example
       addon_version: ${{ needs.package.outputs.addon_version }}
@@ -82,8 +86,9 @@ is pinned to the trusted notifier by full commit SHA, derives source and run
 identity from the GitHub context, fixes the workflow name, path, and branch,
 and forwards only package outputs. It performs no direct dispatch.
 
-Call the notifier only after a successful completed `push` validation run for
-`develop`. The notifier independently verifies that event, branch, conclusion,
+Call the notifier only after a successful completed `push` or explicit
+`workflow_dispatch` validation run for `develop`. The notifier independently
+verifies that exact allowlisted event, branch, conclusion,
 workflow name, workflow path, run ID, source repository, and head SHA. It
 paginates all run artifacts, requires exactly one live `addon-package` artifact
 and one live `validation-evidence` artifact, and requires both metadata records
@@ -125,8 +130,8 @@ add-on ID, or allowlist policy. The target enforces per-source:
 - `publication_enabled` must be `True` for the source.
 - `expected_branch` must match `publication_branch` from the source policy.
 - `validation_workflow` must match the approved workflow name.
-- `validation_workflow_path` must exactly match the approved workflow path on
-  `develop`.
+- `validation_workflow_path` must exactly match the approved canonical workflow
+  path returned by GitHub. Branch identity is checked separately.
 - `workflow_id` from the GitHub API run response must match the source's
   `validation_workflow_id`.
 - Artifact names are fixed to `addon-package` and `validation-evidence`;
