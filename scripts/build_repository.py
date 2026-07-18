@@ -25,7 +25,7 @@ ADDONS = [
         "publication_enabled": False,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 234989014,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -39,7 +39,7 @@ ADDONS = [
         "publication_enabled": False,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 211623879,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -53,7 +53,7 @@ ADDONS = [
         "publication_enabled": False,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 211624357,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -67,7 +67,7 @@ ADDONS = [
         "publication_enabled": False,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 234989955,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -92,7 +92,7 @@ ADDONS = [
         "publication_enabled": False,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 235177143,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -106,7 +106,7 @@ ADDONS = [
         "publication_enabled": False,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 235177212,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -120,7 +120,7 @@ ADDONS = [
         "publication_enabled": False,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 234990067,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -938,12 +938,12 @@ def validate_dispatch_payload(payload):
     if (
         not isinstance(validation_workflow_path, str)
         or not re.fullmatch(
-            r"\.github/workflows/[0-9A-Za-z_.-]+\.ya?ml@develop",
+            r"\.github/workflows/[0-9A-Za-z_.-]+\.ya?ml",
             validation_workflow_path,
         )
     ):
         raise RuntimeError(
-            "Dispatch validation_workflow_path must identify a develop workflow run"
+            "Dispatch validation_workflow_path must be a canonical API path"
         )
     if validation_workflow_path != source_config["validation_workflow_path"]:
         raise RuntimeError(

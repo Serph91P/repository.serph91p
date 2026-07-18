@@ -28,7 +28,7 @@ FIXTURE_ASSET = "plugin.video.twitch-3.1.8.zip"
 FIXTURE_PUBLICATION_ID = "plugin.video.twitch@3.1.8"
 FIXTURE_SOURCE_REPO = "Serph91P/plugin.video.twitch"
 FIXTURE_BRANCH = "develop"
-FIXTURE_WORKFLOW_PATH = ".github/workflows/addon-validations.yml@develop"
+FIXTURE_WORKFLOW_PATH = ".github/workflows/addon-validations.yml"
 FIXTURE_ARTIFACT_SHA256 = (
     "d83db0534b640f2283d9c7ded69d9f8406c274f13385cf045e2a77184058caaa"
 )
@@ -246,7 +246,7 @@ class TestValidateDispatchPayload(unittest.TestCase):
                 builder.validate_dispatch_payload(
                     _valid_dispatch(
                         validation_workflow_path=(
-                            ".github/workflows/untrusted.yml@develop"
+                            ".github/workflows/untrusted.yml"
                         )
                     )
                 )
@@ -516,7 +516,7 @@ class TestValidateGithubRun(unittest.TestCase):
             "branch": "main",
             "publication_branch": "develop",
             "validation_workflow": "Add-on Validations",
-            "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+            "validation_workflow_path": ".github/workflows/addon-validations.yml",
             "validation_workflow_id": 211623879,
             "package_artifact_name": "addon-package",
             "evidence_artifact_name": "validation-evidence",
@@ -551,7 +551,7 @@ class TestValidateGithubRun(unittest.TestCase):
 
     def test_wrong_workflow_path_is_rejected(self):
         with self.assertRaises(RuntimeError):
-            self.validate(_valid_run(path=".github/workflows/untrusted.yml@develop"))
+            self.validate(_valid_run(path=".github/workflows/untrusted.yml"))
 
     def test_wrong_branch_is_rejected(self):
         with self.assertRaises(RuntimeError):
@@ -942,7 +942,7 @@ class TestBuildImmutableRepository(unittest.TestCase):
         "publication_enabled": True,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 211623879,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -985,7 +985,7 @@ class TestBuildImmutableRepository(unittest.TestCase):
         cases.append(missing)
         cases.append(
             _valid_dispatch(
-                validation_workflow_path=".github/workflows/untrusted.yml@develop"
+                validation_workflow_path=".github/workflows/untrusted.yml"
             )
         )
         for payload in cases:
@@ -1985,7 +1985,7 @@ class TestSourceTokenIsolation(unittest.TestCase):
         "publication_enabled": True,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 211623879,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -2617,7 +2617,7 @@ class TestTrustBoundaryBypassRegressions(unittest.TestCase):
                     _valid_dispatch(
                         validation_workflow="Add-on Validations",
                         validation_workflow_path=(
-                            ".github/workflows/untrusted.yml@develop"
+                            ".github/workflows/untrusted.yml"
                         ),
                     )
                 )
@@ -2768,7 +2768,7 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
             with self.subTest(source=f"{config['owner']}/{config['repo']}"):
                 self.assertEqual(
                     config["validation_workflow_path"],
-                    ".github/workflows/addon-validations.yml@develop",
+                    ".github/workflows/addon-validations.yml",
                 )
                 self.assertEqual(config["publication_branch"], "develop")
                 self.assertEqual(config["package_artifact_name"], "addon-package")

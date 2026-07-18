@@ -40,7 +40,7 @@ VERSION_RE = re.compile(
     re.ASCII,
 )
 WORKFLOW_PATH_RE = re.compile(
-    r"^\.github/workflows/[0-9A-Za-z_.-]+\.ya?ml@develop$", re.ASCII
+    r"^\.github/workflows/[0-9A-Za-z_.-]+\.ya?ml$", re.ASCII
 )
 INPUT_FIELDS = (
     "source_repository",
@@ -136,9 +136,7 @@ def validate_inputs(values, actual_source_repository):
     if not isinstance(workflow_path, str) or not WORKFLOW_PATH_RE.fullmatch(
         workflow_path
     ):
-        raise NotificationError(
-            "validation workflow path must identify a develop workflow run"
-        )
+        raise NotificationError("validation workflow path must be a canonical API path")
     if values["validation_event"] not in VALIDATION_EVENTS:
         raise NotificationError("validation event must be push or workflow_dispatch")
     if values["expected_branch"] != TARGET_BRANCH:
