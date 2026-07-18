@@ -517,10 +517,10 @@ class PrepareDispatchTests(unittest.TestCase):
                 notifier,
                 "_download_artifact",
                 side_effect=[
-                    package_artifact_archive(package_bytes),
                     evidence_archive(
                         valid_evidence(artifact_sha256=values["artifact_sha256"])
                     ),
+                    package_artifact_archive(package_bytes),
                 ],
             ) as download,
         ):
@@ -529,7 +529,41 @@ class PrepareDispatchTests(unittest.TestCase):
             )
 
         self.assertEqual(download.call_count, 2)
+        self.assertEqual(
+            [call.args[3] for call in download.call_args_list],
+            ["evidence", "package"],
+        )
         self.assertEqual(payload["source_repo"], SOURCE)
+        self.assertEqual(payload["publication_id"], PUBLICATION_ID)
+
+    def test_mismatched_evidence_publication_id_prevents_package_download(self):
+        artifacts = {
+            "artifacts": [
+                artifact("addon-package", 1),
+                artifact("validation-evidence", 2),
+            ]
+        }
+
+        def api_request(_token, url):
+            if url.endswith(f"/actions/runs/{RUN_ID}"):
+                return valid_run(), {}
+            return artifacts, {}
+
+        with (
+            mock.patch.object(notifier, "_api_request", side_effect=api_request),
+            mock.patch.object(
+                notifier,
+                "_download_artifact",
+                return_value=evidence_archive(
+                    valid_evidence(publication_id=f"{ADDON_ID}@9.9.9")
+                ),
+            ) as download,
+            self.assertRaises(notifier.NotificationError),
+        ):
+            notifier.prepare_dispatch(valid_inputs(), SOURCE, "source-token", now=NOW)
+
+        self.assertEqual(download.call_count, 1)
+        self.assertEqual(download.call_args.args[3], "evidence")
 
 
 class DispatchPayloadTests(unittest.TestCase):
@@ -545,6 +579,7 @@ class DispatchPayloadTests(unittest.TestCase):
                 "validation_workflow",
                 "validation_workflow_path",
                 "expected_branch",
+                "publication_id",
             ),
         )
         self.assertIs(type(payload["validation_run_id"]), int)

@@ -77,7 +77,8 @@ The workflow intentionally exposes no `workflow_call` outputs. Its only success
 effect is a `validated-addon-publication` dispatch to
 `Serph91P/repository.serph91p`. The dispatch `client_payload` contains only
 `source_repo`, `candidate_sha`, `validation_run_id`, `validation_head_sha`,
-`validation_workflow`, `validation_workflow_path`, and `expected_branch`.
+`validation_workflow`, `validation_workflow_path`, `expected_branch`, and
+`publication_id`.
 
 `addon-workflow-templates/notify-repository.yml` is a source-side forwarding
 workflow for projects that keep notification in a separate reusable file. It
@@ -91,13 +92,12 @@ verifies that exact allowlisted event, branch, conclusion,
 workflow name, workflow path, run ID, source repository, and head SHA. It
 paginates all run artifacts, requires exactly one live `addon-package` artifact
 and one live `validation-evidence` artifact, and requires both metadata records
-to declare the producer's exact 30-day retention interval. It downloads both
-wrappers with the
-source-read token while stripping authorization on cross-origin redirects. The
-package wrapper must contain exactly one regular, unencrypted file named by
-`asset_name`; the notifier hashes those exact package bytes and requires the
-configured SHA-256. It separately validates the single evidence JSON file,
-rejecting duplicate JSON member names, before dispatching.
+to declare the producer's exact 30-day retention interval. It downloads and
+validates the single evidence JSON file, rejecting duplicate JSON member names,
+before downloading package bytes. Both wrappers use the source-read token while
+stripping authorization on cross-origin redirects. The package wrapper must
+contain exactly one regular, unencrypted file named by `asset_name`; the
+notifier hashes those exact package bytes and requires the configured SHA-256.
 
 ## Credentials and permissions
 

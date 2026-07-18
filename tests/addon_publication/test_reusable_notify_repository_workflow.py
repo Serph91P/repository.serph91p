@@ -100,6 +100,7 @@ class ReusableNotifierWorkflowTests(unittest.TestCase):
         self.assertNotIn("secrets.REPO_DISPATCH_TOKEN", before_dispatch)
         self.assertIn("validated-addon-publication", dispatch["run"])
         self.assertIn("Serph91P/repository.serph91p", dispatch["run"])
+        self.assertIn('"publication_id"', dispatch["run"])
 
     def test_workflow_does_not_log_or_dispatch_sensitive_material(self):
         dispatch = next(

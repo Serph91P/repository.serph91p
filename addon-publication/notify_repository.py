@@ -74,6 +74,7 @@ DISPATCH_FIELDS = (
     "validation_workflow",
     "validation_workflow_path",
     "expected_branch",
+    "publication_id",
 )
 
 
@@ -459,6 +460,7 @@ def build_dispatch_payload(values):
         "validation_workflow": values["validation_workflow"],
         "validation_workflow_path": values["validation_workflow_path"],
         "expected_branch": TARGET_BRANCH,
+        "publication_id": values["publication_id"],
     }
     if tuple(payload) != DISPATCH_FIELDS:
         raise AssertionError("dispatch field order drifted")
@@ -524,20 +526,20 @@ def prepare_dispatch(values, actual_source_repository, token, *, now=None):
         run_id,
         now=now,
     )
-    package_bytes = _download_artifact(
-        token,
-        selected[PACKAGE_ARTIFACT]["archive_download_url"],
-        MAX_PACKAGE_ARCHIVE_BYTES,
-        "package",
-    )
     evidence_bytes = _download_artifact(
         token,
         selected[EVIDENCE_ARTIFACT]["archive_download_url"],
         MAX_EVIDENCE_ARCHIVE_BYTES,
         "evidence",
     )
-    read_and_validate_package_archive(package_bytes, validated)
     read_and_validate_evidence_archive(evidence_bytes, validated)
+    package_bytes = _download_artifact(
+        token,
+        selected[PACKAGE_ARTIFACT]["archive_download_url"],
+        MAX_PACKAGE_ARCHIVE_BYTES,
+        "package",
+    )
+    read_and_validate_package_archive(package_bytes, validated)
     return build_dispatch_payload(validated)
 
 

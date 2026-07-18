@@ -43,6 +43,7 @@ def _valid_dispatch(**overrides):
         "validation_workflow": "Add-on Validations",
         "validation_workflow_path": FIXTURE_WORKFLOW_PATH,
         "expected_branch": "develop",
+        "publication_id": FIXTURE_PUBLICATION_ID,
     }
     payload.update(overrides)
     return payload
@@ -318,6 +319,38 @@ class TestValidateDispatchPayload(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 builder.validate_dispatch_payload(payload)
 
+    def test_wrong_validation_workflow_path_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            builder.validate_dispatch_payload(
+                _valid_dispatch(
+                    validation_workflow_path=(
+                        ".github/workflows/addon-validations.yml@main"
+                    )
+                )
+            )
+
+    def test_missing_publication_id_is_rejected(self):
+        payload = _valid_dispatch()
+        del payload["publication_id"]
+        with self.assertRaises(RuntimeError):
+            builder.validate_dispatch_payload(payload)
+
+    def test_malformed_publication_id_is_rejected(self):
+        for publication_id in (
+            "",
+            "plugin.video.twitch",
+            "plugin.video.twitch@",
+            "@3.1.8",
+            "plugin.video.twitch@3.1 beta",
+            "plugin/video@3.1.8",
+        ):
+            with self.subTest(publication_id=publication_id), self.assertRaises(
+                RuntimeError
+            ):
+                builder.validate_dispatch_payload(
+                    _valid_dispatch(publication_id=publication_id)
+                )
+
     def test_missing_expected_branch_is_rejected(self):
         payload = _valid_dispatch()
         del payload["expected_branch"]
@@ -338,6 +371,7 @@ class TestValidateImmutableEvidence(unittest.TestCase):
             FIXTURE_SHA,
             FIXTURE_RUN_ID,
             FIXTURE_SHA,
+            FIXTURE_PUBLICATION_ID,
         )
 
     def test_valid_evidence_with_string_run_id_passes(self):
@@ -347,6 +381,7 @@ class TestValidateImmutableEvidence(unittest.TestCase):
             FIXTURE_SHA,
             FIXTURE_RUN_ID,
             FIXTURE_SHA,
+            FIXTURE_PUBLICATION_ID,
         )
 
     def test_missing_required_field_is_rejected(self):
@@ -369,6 +404,7 @@ class TestValidateImmutableEvidence(unittest.TestCase):
                         FIXTURE_SHA,
                         FIXTURE_RUN_ID,
                         FIXTURE_SHA,
+                        FIXTURE_PUBLICATION_ID,
                     )
 
     def test_wrong_candidate_sha_is_rejected(self):
@@ -379,6 +415,7 @@ class TestValidateImmutableEvidence(unittest.TestCase):
                 FIXTURE_SHA,
                 FIXTURE_RUN_ID,
                 FIXTURE_SHA,
+                FIXTURE_PUBLICATION_ID,
             )
 
     def test_wrong_validation_head_sha_is_rejected(self):
@@ -389,6 +426,7 @@ class TestValidateImmutableEvidence(unittest.TestCase):
                 FIXTURE_SHA,
                 FIXTURE_RUN_ID,
                 FIXTURE_SHA,
+                FIXTURE_PUBLICATION_ID,
             )
 
     def test_wrong_run_id_is_rejected(self):
@@ -399,6 +437,7 @@ class TestValidateImmutableEvidence(unittest.TestCase):
                 FIXTURE_SHA,
                 FIXTURE_RUN_ID,
                 FIXTURE_SHA,
+                FIXTURE_PUBLICATION_ID,
             )
 
     def test_candidate_sha_must_be_40_hex(self):
@@ -409,6 +448,7 @@ class TestValidateImmutableEvidence(unittest.TestCase):
                 "not-a-sha",
                 FIXTURE_RUN_ID,
                 "not-a-sha",
+                FIXTURE_PUBLICATION_ID,
             )
 
     def test_addon_id_and_version_must_be_present(self):
@@ -421,6 +461,7 @@ class TestValidateImmutableEvidence(unittest.TestCase):
                         FIXTURE_SHA,
                         FIXTURE_RUN_ID,
                         FIXTURE_SHA,
+                        FIXTURE_PUBLICATION_ID,
                     )
 
     def test_publication_id_must_match_addon_id_and_version(self):
@@ -431,6 +472,17 @@ class TestValidateImmutableEvidence(unittest.TestCase):
                 FIXTURE_SHA,
                 FIXTURE_RUN_ID,
                 FIXTURE_SHA,
+                FIXTURE_PUBLICATION_ID,
+            )
+
+    def test_publication_id_must_match_dispatch(self):
+        with self.assertRaises(RuntimeError):
+            builder.validate_immutable_evidence(
+                _valid_evidence(),
+                FIXTURE_SHA,
+                FIXTURE_RUN_ID,
+                FIXTURE_SHA,
+                f"{FIXTURE_ADDON_ID}@9.9.9",
             )
 
     def test_non_dict_evidence_is_rejected(self):
@@ -440,6 +492,7 @@ class TestValidateImmutableEvidence(unittest.TestCase):
                 FIXTURE_SHA,
                 FIXTURE_RUN_ID,
                 FIXTURE_SHA,
+                FIXTURE_PUBLICATION_ID,
             )
 
     def test_non_numeric_run_id_in_evidence_is_rejected(self):
@@ -450,6 +503,7 @@ class TestValidateImmutableEvidence(unittest.TestCase):
                 FIXTURE_SHA,
                 FIXTURE_RUN_ID,
                 FIXTURE_SHA,
+                FIXTURE_PUBLICATION_ID,
             )
 
 
@@ -908,12 +962,97 @@ class TestBuildImmutableRepository(unittest.TestCase):
         ):
             builder.build_immutable_repository(dispatch_payload, root)
 
+    def _add_existing_outputs(self, root):
+        repo = root / "repo"
+        site = root / "_site"
+        repo.mkdir(exist_ok=True)
+        site.mkdir()
+        (repo / "sentinel.txt").write_bytes(b"existing-repo")
+        (site / "sentinel.txt").write_bytes(b"existing-site")
+        return repo, site, _snapshot_tree(repo), _snapshot_tree(site)
+
     def test_unknown_source_repo_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = _make_repo_root(tmpdir)
             payload = _valid_dispatch(source_repo="unknown/repo")
             with self.assertRaises(RuntimeError):
                 builder.build_immutable_repository(payload, root)
+
+    def test_missing_or_wrong_workflow_path_preserves_outputs_without_download(self):
+        cases = []
+        missing = _valid_dispatch()
+        del missing["validation_workflow_path"]
+        cases.append(missing)
+        cases.append(
+            _valid_dispatch(
+                validation_workflow_path=".github/workflows/untrusted.yml@develop"
+            )
+        )
+        for payload in cases:
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as tmpdir:
+                root = _make_repo_root(tmpdir)
+                repo, site, repo_before, site_before = self._add_existing_outputs(root)
+                api_get = mock.Mock(return_value=_valid_run())
+                download = mock.Mock()
+
+                with self.assertRaises(RuntimeError):
+                    self._build_with_mock(root, payload, api_get, download)
+
+                download.assert_not_called()
+                self.assertEqual(_snapshot_tree(repo), repo_before)
+                self.assertEqual(_snapshot_tree(site), site_before)
+
+    def test_missing_or_wrong_addon_publication_id_prevents_all_downloads(self):
+        missing = _valid_dispatch()
+        del missing["publication_id"]
+        cases = [
+            missing,
+            _valid_dispatch(publication_id=f"{FIXTURE_ADDON_ID}@3.1 beta"),
+            _valid_dispatch(publication_id=f"plugin.other@{FIXTURE_VERSION}"),
+        ]
+        for payload in cases:
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as tmpdir:
+                root = _make_repo_root(tmpdir)
+                repo, site, repo_before, site_before = self._add_existing_outputs(root)
+                api_get = mock.Mock()
+                download = mock.Mock()
+
+                with self.assertRaises(RuntimeError):
+                    self._build_with_mock(root, payload, api_get, download)
+
+                api_get.assert_not_called()
+                download.assert_not_called()
+                self.assertEqual(_snapshot_tree(repo), repo_before)
+                self.assertEqual(_snapshot_tree(site), site_before)
+
+    def test_evidence_publication_mismatch_prevents_package_download_and_mutation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = _make_repo_root(tmpdir)
+            repo, site, repo_before, site_before = self._add_existing_outputs(root)
+            addon_zip = root / "addon.zip"
+            _make_addon_zip(addon_zip, FIXTURE_ADDON_ID, FIXTURE_VERSION)
+            evidence_archive = root / "evidence.zip"
+            package_archive = root / "package.zip"
+            evidence = _valid_evidence(artifact_sha256=_zip_sha256(addon_zip))
+            _make_evidence_archive(evidence, evidence_archive)
+            _make_package_archive(addon_zip, package_archive)
+            api_get, download = _make_mock_api_responses(
+                evidence_archive, package_archive
+            )
+            tracked_download = mock.Mock(side_effect=download)
+            payload = _valid_dispatch(
+                publication_id=f"{FIXTURE_ADDON_ID}@9.9.9"
+            )
+
+            with self.assertRaises(RuntimeError):
+                self._build_with_mock(root, payload, api_get, tracked_download)
+
+            self.assertEqual(
+                [call.args[0] for call in tracked_download.call_args_list],
+                ["https://example.invalid/evidence.zip"],
+            )
+            self.assertEqual(_snapshot_tree(repo), repo_before)
+            self.assertEqual(_snapshot_tree(site), site_before)
 
     def test_branch_mismatch_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmpdir:
