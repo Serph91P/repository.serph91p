@@ -858,6 +858,7 @@ def validate_dispatch_payload(payload):
         "validation_workflow",
         "validation_workflow_path",
         "expected_branch",
+        "publication_id",
     }
     unknown = set(payload.keys()) - allowed_fields
     if unknown:
@@ -873,6 +874,22 @@ def validate_dispatch_payload(payload):
     if not source_config["publication_enabled"]:
         raise RuntimeError(
             f"Immutable publication is disabled for source {source_repo!r}"
+        )
+    publication_id = payload.get("publication_id")
+    if not isinstance(publication_id, str) or publication_id.count("@") != 1:
+        raise RuntimeError(
+            f"Dispatch publication_id is malformed: {publication_id!r}"
+        )
+    publication_addon_id, publication_version = publication_id.split("@")
+    if not re.fullmatch(r"[0-9A-Za-z._-]+", publication_addon_id, re.ASCII):
+        raise RuntimeError(
+            f"Dispatch publication_id has an invalid addon ID: {publication_id!r}"
+        )
+    _parse_kodi_version(publication_version)
+    if publication_addon_id != source_config["addon_id"]:
+        raise RuntimeError(
+            f"Dispatch publication_id add-on {publication_addon_id!r} does not "
+            f"match configured addon {source_config['addon_id']!r}"
         )
     candidate_sha = payload.get("candidate_sha")
     if (
@@ -945,7 +962,11 @@ def validate_dispatch_payload(payload):
 
 
 def validate_immutable_evidence(
-    evidence, candidate_sha, validation_run_id, validation_head_sha
+    evidence,
+    candidate_sha,
+    validation_run_id,
+    validation_head_sha,
+    publication_id,
 ):
     """Validate evidence JSON against the immutable publication contract."""
     if not isinstance(evidence, dict):
@@ -1007,6 +1028,11 @@ def validate_immutable_evidence(
         raise RuntimeError(
             f"Evidence publication_id {evidence['publication_id']!r} does not match "
             f"expected {expected_pub!r}"
+        )
+    if evidence["publication_id"] != publication_id:
+        raise RuntimeError(
+            f"Evidence publication_id {evidence['publication_id']!r} does not match "
+            f"dispatch publication_id {publication_id!r}"
         )
 
 
@@ -1474,6 +1500,7 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
     candidate_sha = dispatch_payload["candidate_sha"]
     validation_run_id = dispatch_payload["validation_run_id"]
     validation_head_sha = dispatch_payload["validation_head_sha"]
+    publication_id = dispatch_payload["publication_id"]
     source_config = _source_config(source_repo)
     expected_branch = source_config["publication_branch"]
     package_artifact_name = source_config["package_artifact_name"]
@@ -1522,8 +1549,6 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
         source_download_file(
             evidence_artifact["archive_download_url"], evidence_archive
         )
-        source_download_file(package_artifact["archive_download_url"], package_archive)
-
         with zipfile.ZipFile(evidence_archive, "r") as zf:
             evidence_members = [m for m in zf.namelist() if not m.endswith("/")]
             if evidence_members != ["validation-evidence.json"]:
@@ -1534,7 +1559,11 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
             evidence = json.loads(zf.read("validation-evidence.json"))
 
         validate_immutable_evidence(
-            evidence, candidate_sha, validation_run_id, validation_head_sha
+            evidence,
+            candidate_sha,
+            validation_run_id,
+            validation_head_sha,
+            publication_id,
         )
 
         addon_id = evidence["addon_id"]
@@ -1558,6 +1587,8 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
             )
 
         _check_version_monotonicity(repo_root, addon_id, addon_version)
+
+        source_download_file(package_artifact["archive_download_url"], package_archive)
 
         with zipfile.ZipFile(package_archive, "r") as zf:
             package_members = [m for m in zf.namelist() if not m.endswith("/")]

@@ -190,6 +190,7 @@ jobs:
               "validation_workflow",
               "validation_workflow_path",
               "expected_branch",
+              "publication_id",
           }
           if set(payload) != expected or type(payload["validation_run_id"]) is not int:
               raise SystemExit("Refusing malformed repository dispatch payload")
