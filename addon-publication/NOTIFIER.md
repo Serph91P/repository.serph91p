@@ -1,0 +1,102 @@
+# Immutable publication notifier
+
+`.github/workflows/reusable-notify-repository.yml` is the only supported
+notification boundary for immutable add-on publication. Callers must pin the
+reusable workflow to a full 40-character commit SHA. The notifier then verifies
+the completed source run and its artifacts through the GitHub API before it can
+send a repository dispatch.
+
+## Caller contract
+
+The reusable workflow requires these inputs:
+
+| Input | Contract |
+| --- | --- |
+| `source_repository` | Exact source repository in `owner/name` form. It must equal the caller repository. |
+| `candidate_sha` | Exact lowercase 40-character commit SHA validated by the source run. |
+| `validation_run_id` | Positive numeric ID of the completed source validation run. |
+| `validation_workflow` | Exact source validation workflow name. |
+| `validation_workflow_path` | Exact source workflow path reported by GitHub, including its `@develop` suffix. |
+| `expected_branch` | Must be `develop`. |
+| `addon_id` | Exact configured add-on ID. |
+| `addon_version` | Exact configured add-on version. |
+| `asset_name` | Exact deterministic package filename, `<addon_id>-<addon_version>.zip`. |
+| `artifact_sha256` | Exact lowercase package SHA-256 from the packaging job. |
+| `publication_id` | Exact publication identity, `<addon_id>@<addon_version>`. |
+
+A source workflow can enforce the validation and packaging order as follows. The
+workflow itself must run on a `push` to `develop`, and `validation_workflow` must
+match its exact GitHub Actions workflow name.
+
+```yaml
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./scripts/validate
+
+  package:
+    needs: validate
+    uses: Serph91P/repository.serph91p/.github/workflows/reusable-addon-package.yml@<40-char-sha>
+    with:
+      addon_id: plugin.video.example
+      runtime_entries_json: '["addon.xml", "resources/"]'
+
+  notify-repository:
+    needs: [validate, package]
+    if: ${{ needs.validate.result == 'success' && needs.package.result == 'success' }}
+    uses: Serph91P/repository.serph91p/.github/workflows/reusable-notify-repository.yml@<40-char-sha>
+    with:
+      source_repository: ${{ github.repository }}
+      candidate_sha: ${{ github.sha }}
+      validation_run_id: ${{ github.run_id }}
+      validation_workflow: Source validation
+      validation_workflow_path: .github/workflows/addon-validations.yml@develop
+      expected_branch: develop
+      addon_id: plugin.video.example
+      addon_version: ${{ needs.package.outputs.addon_version }}
+      asset_name: ${{ needs.package.outputs.asset_name }}
+      artifact_sha256: ${{ needs.package.outputs.artifact_sha256 }}
+      publication_id: ${{ needs.package.outputs.publication_id }}
+    secrets:
+      REPO_DISPATCH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+```
+
+The workflow intentionally exposes no `workflow_call` outputs. Its only success
+effect is a `validated-addon-publication` dispatch to
+`Serph91P/repository.serph91p`. The dispatch `client_payload` contains only
+`source_repo`, `candidate_sha`, `validation_run_id`, `validation_head_sha`,
+`validation_workflow`, `validation_workflow_path`, and `expected_branch`.
+
+Call the notifier only after a successful completed `push` validation run for
+`develop`. The notifier independently verifies that event, branch, conclusion,
+workflow name, workflow path, run ID, source repository, and head SHA. It
+paginates all run artifacts, requires exactly one live `addon-package` artifact
+and one live `validation-evidence` artifact, and requires both metadata records
+to declare the producer's exact 30-day retention interval. It downloads both
+wrappers with the
+source-read token while stripping authorization on cross-origin redirects. The
+package wrapper must contain exactly one regular, unencrypted file named by
+`asset_name`; the notifier hashes those exact package bytes and requires the
+configured SHA-256. It separately validates the single evidence JSON file,
+rejecting duplicate JSON member names, before dispatching.
+
+## Credentials and permissions
+
+The caller must provide the required `REPO_DISPATCH_TOKEN` secret. Limit that
+token to dispatching `Serph91P/repository.serph91p`.
+
+Credential scopes are intentionally separated by step:
+
+1. The tooling bootstrap uses GitHub OIDC only to read the trusted
+   `job_workflow_ref` claim and resolve the exact reusable-workflow commit SHA.
+2. The validation step receives only the caller `github.token` and uses it to
+   read the exact validation run and its artifacts.
+3. The dispatch step receives only `REPO_DISPATCH_TOKEN` and the validated,
+   metadata-only client payload.
+
+The reusable workflow grants `actions: read`, `contents: read`, and
+`id-token: write`; the last permission exists only to obtain the trusted
+reusable-workflow identity claim. Tokens, artifact download URLs, redirect URLs,
+credentials, and signed URLs are never included in the dispatch payload or
+printed by the notifier.

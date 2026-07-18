@@ -645,6 +645,7 @@ def validate_dispatch_payload(payload):
         "validation_run_id",
         "validation_head_sha",
         "validation_workflow",
+        "validation_workflow_path",
         "expected_branch",
         "package_artifact_name",
         "evidence_artifact_name",
@@ -693,6 +694,17 @@ def validate_dispatch_payload(payload):
     validation_workflow = payload.get("validation_workflow")
     if not validation_workflow or not isinstance(validation_workflow, str):
         raise RuntimeError("Dispatch validation_workflow must be a non-empty string")
+    validation_workflow_path = payload.get("validation_workflow_path")
+    if (
+        not isinstance(validation_workflow_path, str)
+        or not re.fullmatch(
+            r"\.github/workflows/[0-9A-Za-z_.-]+\.ya?ml@develop",
+            validation_workflow_path,
+        )
+    ):
+        raise RuntimeError(
+            "Dispatch validation_workflow_path must identify a develop workflow run"
+        )
     expected_branch = payload.get("expected_branch")
     if not expected_branch or not isinstance(expected_branch, str):
         raise RuntimeError("Dispatch expected_branch must be a non-empty string")
@@ -769,6 +781,7 @@ def validate_github_run(
     validation_run_id,
     validation_head_sha,
     validation_workflow,
+    validation_workflow_path,
     expected_branch,
 ):
     """Validate a GitHub Actions run response against dispatch fields."""
@@ -788,6 +801,11 @@ def validate_github_run(
         raise RuntimeError(
             f"Run workflow name {run_data.get('name')!r} does not match dispatch "
             f"validation_workflow {validation_workflow!r}"
+        )
+    if run_data.get("path") != validation_workflow_path:
+        raise RuntimeError(
+            f"Run workflow path {run_data.get('path')!r} does not match dispatch "
+            f"validation_workflow_path {validation_workflow_path!r}"
         )
     if run_data.get("head_branch") != expected_branch:
         raise RuntimeError(
@@ -958,6 +976,7 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
     validation_run_id = dispatch_payload["validation_run_id"]
     validation_head_sha = dispatch_payload["validation_head_sha"]
     validation_workflow = dispatch_payload["validation_workflow"]
+    validation_workflow_path = dispatch_payload["validation_workflow_path"]
     expected_branch = dispatch_payload["expected_branch"]
     package_artifact_name = dispatch_payload.get(
         "package_artifact_name", "addon-package"
@@ -985,6 +1004,7 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
         validation_run_id,
         validation_head_sha,
         validation_workflow,
+        validation_workflow_path,
         expected_branch,
     )
     source_ref_url = (
