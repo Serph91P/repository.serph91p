@@ -131,6 +131,26 @@ ADDONS = [
 ARTIFACT_RETENTION_DAYS = 30
 ARTIFACT_PAGE_SIZE = 100
 MAX_ARTIFACT_PAGES = 100
+REPOSITORY_ONLY_COMPONENTS = {
+    ".git",
+    ".github",
+    ".hermes",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "tests",
+    "workflows",
+}
+REPOSITORY_ONLY_FILENAMES = {
+    ".gitignore",
+    "pyproject.toml",
+    "requirements-dev.txt",
+}
+KODI_VERSION_RE = re.compile(
+    r"^[0-9]+(?:\.[0-9]+)*(?:\+[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$",
+    re.ASCII,
+)
 
 
 def _source_repo_key(config):
@@ -147,22 +167,28 @@ def _source_config(source_repo):
 
 
 def _parse_kodi_version(version_string):
-    """Parse a dotted numeric addon version into a comparable tuple of ints.
+    """Parse the accepted Kodi version grammar into a total-order key."""
+    if not isinstance(version_string, str) or not KODI_VERSION_RE.fullmatch(
+        version_string
+    ):
+        raise RuntimeError(f"Invalid addon version segment in {version_string!r}")
 
-    Fails closed if the string is empty or any segment is not a non-negative
-    integer.
-    """
-    if not version_string or not isinstance(version_string, str):
-        raise RuntimeError(f"Invalid addon version: {version_string!r}")
-    parts = version_string.split(".")
-    parsed = []
-    for part in parts:
-        if not part or not part.isascii() or not part.isdigit():
-            raise RuntimeError(f"Invalid addon version segment in {version_string!r}")
-        parsed.append(int(part))
-    if not parsed:
-        raise RuntimeError(f"Invalid addon version: {version_string!r}")
-    return tuple(parsed)
+    core_text, separator, suffix_text = version_string.partition("+")
+    core = [int(part) for part in core_text.split(".")]
+    while len(core) > 1 and core[-1] == 0:
+        core.pop()
+
+    if not separator:
+        suffix = (0,)
+    else:
+        tokens = []
+        for token in suffix_text.split("."):
+            if token.isdigit():
+                tokens.append((0, int(token)))
+            else:
+                tokens.append((1, token.casefold()))
+        suffix = (1, tuple(tokens))
+    return tuple(core), suffix
 
 
 def _check_version_monotonicity(repo_root, addon_id, candidate_version):
@@ -176,7 +202,10 @@ def _check_version_monotonicity(repo_root, addon_id, candidate_version):
     """
     manifest_path = repo_root / "repo" / "addons.xml"
     if not manifest_path.is_file():
-        return
+        raise RuntimeError(
+            f"Cannot enforce version floor without current repository manifest "
+            f"{manifest_path}"
+        )
     try:
         root = ET.parse(manifest_path).getroot()
     except (OSError, ET.ParseError) as error:
@@ -224,7 +253,64 @@ REPO_OUTPUT = REPO_ROOT / "repo"
 SITE_OUTPUT = REPO_ROOT / "_site"
 TEMP_DIR = REPO_ROOT / "_temp"
 GH_API = "https://api.github.com"
+CURRENT_MANIFEST_URL = "https://serph91p.github.io/repository.serph91p/addons.xml"
+MAX_MANIFEST_BYTES = 5 * 1024 * 1024
 NO_RELEASE = object()
+
+
+def download_current_manifest(repo_root=None):
+    """Download and validate the public target manifest without credentials."""
+    if repo_root is None:
+        repo_root = REPO_ROOT
+    request = urllib.request.Request(
+        CURRENT_MANIFEST_URL,
+        headers={"Accept": "application/xml, text/xml"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        response_url = response.geturl()
+        final_url = urlsplit(response_url)
+        if (
+            final_url.scheme != "https"
+            or final_url.hostname != "serph91p.github.io"
+            or final_url.port not in (None, 443)
+            or final_url.path != "/repository.serph91p/addons.xml"
+        ):
+            raise RuntimeError(
+                f"Current repository manifest redirected to untrusted URL "
+                f"{response_url!r}"
+            )
+        content = response.read(MAX_MANIFEST_BYTES + 1)
+    if not content or len(content) > MAX_MANIFEST_BYTES:
+        raise RuntimeError("Current repository manifest is empty or too large")
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError as error:
+        raise RuntimeError(f"Current repository manifest is invalid: {error}") from error
+    if root.tag != "addons":
+        raise RuntimeError(
+            f"Current repository manifest has unexpected root {root.tag!r}"
+        )
+    seen = set()
+    for addon in root:
+        if addon.tag != "addon":
+            raise RuntimeError(
+                f"Current repository manifest has unexpected element {addon.tag!r}"
+            )
+        addon_id = addon.get("id")
+        version = addon.get("version")
+        if not addon_id or addon_id in seen:
+            raise RuntimeError(
+                f"Current repository manifest has missing or duplicate add-on ID "
+                f"{addon_id!r}"
+            )
+        _parse_kodi_version(version)
+        seen.add(addon_id)
+    destination = repo_root / "repo" / "addons.xml"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_suffix(".xml.tmp")
+    temporary.write_bytes(content)
+    os.replace(temporary, destination)
+    print(f"Downloaded current repository manifest: {destination}")
 
 
 def github_api_get(url):
@@ -321,15 +407,17 @@ def source_download_file(url, destination):
         raise
 
 
-def get_latest_release_zip(owner, repo, addon_id):
+def get_latest_release_zip(owner, repo, addon_id, api_get=None):
     """Return the one correctly named ZIP attached to the latest release."""
+    if api_get is None:
+        api_get = github_api_get
     releases_url = f"{GH_API}/repos/{quote(owner, safe='')}/{quote(repo, safe='')}"
     try:
-        data = github_api_get(f"{releases_url}/releases/latest")
+        data = api_get(f"{releases_url}/releases/latest")
     except urllib.error.HTTPError as error:
         if error.code != 404:
             raise
-        releases = github_api_get(f"{releases_url}/releases")
+        releases = api_get(f"{releases_url}/releases")
         if not isinstance(releases, list):
             raise RuntimeError(
                 f"Malformed release list after missing latest release for {owner}/{repo}"
@@ -394,6 +482,19 @@ def _validated_filename_component(value, description):
     return value
 
 
+def _reject_repository_only_path(value):
+    parts = tuple(part.casefold() for part in PurePosixPath(value).parts)
+    filename = parts[-1]
+    if (
+        any(part in REPOSITORY_ONLY_COMPONENTS for part in parts)
+        or filename in REPOSITORY_ONLY_FILENAMES
+        or filename.endswith((".pyc", ".pyo"))
+        or filename == "readme"
+        or filename.startswith("readme.")
+    ):
+        raise RuntimeError(f"repository-only path is not allowed: {value!r}")
+
+
 def _local_asset_paths(addon):
     """Return validated local paths referenced by Kodi metadata assets."""
     paths = []
@@ -431,6 +532,8 @@ def _validated_archive(archive, addon_id, release_version, release_filename):
             raise RuntimeError(f"Unsupported release archive member type: {name!r}")
         if path.parts[0] != addon_id:
             raise RuntimeError(f"Archive member has wrong root: {name!r}")
+        if not info.is_dir():
+            _reject_repository_only_path(PurePosixPath(*path.parts[1:]))
         canonical_name = relative_name.casefold()
         if canonical_name in canonical_names:
             raise RuntimeError(f"Duplicate archive member: {name!r}")
@@ -478,8 +581,14 @@ def _validated_archive(archive, addon_id, release_version, release_filename):
     return addon, assets
 
 
-def _validated_source_members(archive, addon_id):
+def _validated_source_members(archive, addon_id, runtime_entries):
     """Validate a GitHub source ZIP and return its embedded identity and files."""
+    if not runtime_entries:
+        raise RuntimeError("Runtime allowlist is empty")
+    allowed_files = {entry for entry in runtime_entries if not entry.endswith("/")}
+    directory_prefixes = tuple(
+        entry for entry in runtime_entries if entry.endswith("/")
+    )
     roots = set()
     canonical_names = set()
     addon_xml_members = []
@@ -505,9 +614,15 @@ def _validated_source_members(archive, addon_id):
         if info.is_dir():
             continue
         relative_path = PurePosixPath(*path.parts[1:])
+        relative = relative_path.as_posix()
+        if relative not in allowed_files and not any(
+            relative.startswith(prefix) for prefix in directory_prefixes
+        ):
+            continue
+        _reject_repository_only_path(relative_path)
         files.append((relative_path, info))
         members[relative_name] = info
-        if relative_path.name.casefold() == "addon.xml":
+        if relative == "addon.xml":
             addon_xml_members.append(relative_name)
 
     if len(roots) != 1:
@@ -535,16 +650,21 @@ def _validated_source_members(archive, addon_id):
         raise RuntimeError(
             f"Configured addon ID {addon_id!r} does not match embedded ID {embedded_id!r}"
         )
+    validate_runtime_allowlist(
+        [f"{addon_id}/{relative.as_posix()}" for relative, _info in files],
+        addon_id,
+        runtime_entries,
+    )
     return embedded_id, embedded_version, files
 
 
-def create_source_package(source_zip, addon_id, destination):
+def create_source_package(source_zip, addon_id, destination, runtime_entries):
     """Securely repackage a GitHub source archive as a Kodi addon ZIP."""
     _validated_filename_component(addon_id, "addon ID")
     try:
         with zipfile.ZipFile(source_zip, "r") as source:
             embedded_id, embedded_version, files = _validated_source_members(
-                source, addon_id
+                source, addon_id, runtime_entries
             )
             filename = f"{embedded_id}-{embedded_version}.zip"
             package = destination / filename
@@ -1170,6 +1290,7 @@ def validate_runtime_allowlist(members, addon_id, runtime_entries):
         ) or name.endswith("/")
         if is_dir:
             continue
+        _reject_repository_only_path(subpath)
         matched = False
         for prefix in dir_prefixes:
             if subpath.startswith(prefix):
@@ -1221,6 +1342,8 @@ def validate_archive_topology(zip_path, addon_id, addon_version, runtime_entries
                     )
                 if path.parts[0] != addon_id:
                     raise RuntimeError(f"Archive member has wrong root: {name!r}")
+                if not info.is_dir():
+                    _reject_repository_only_path(PurePosixPath(*path.parts[1:]))
                 canonical_name = relative_name.casefold()
                 if canonical_name in canonical_names:
                     raise RuntimeError(f"Duplicate archive member: {name!r}")
@@ -1466,22 +1589,33 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
                 repo = config["repo"]
                 other_addon_id = config["addon_id"]
                 print(f"\nProcessing: {other_addon_id} ({owner}/{repo})")
-                release = get_latest_release_zip(owner, repo, other_addon_id)
+                release = get_latest_release_zip(
+                    owner,
+                    repo,
+                    other_addon_id,
+                    api_get=source_github_api_get,
+                )
                 other_download_dir = temp_dir / other_addon_id
                 other_download_dir.mkdir(parents=True)
                 if release is NO_RELEASE:
                     branch = config["branch"]
                     print(f"  No release found, building from source ({branch} branch)")
                     source_zip = other_download_dir / "source.zip"
-                    download_file(_source_archive_url(owner, repo, branch), source_zip)
+                    source_download_file(
+                        _source_archive_url(owner, repo, branch), source_zip
+                    )
                     zip_path, version, filename = create_source_package(
-                        source_zip, other_addon_id, other_download_dir
+                        source_zip,
+                        other_addon_id,
+                        other_download_dir,
+                        config["runtime_entries"],
                     )
                 else:
                     release_url, version, filename = release
                     print(f"  Found release: v{version} ({filename})")
                     zip_path = other_download_dir / filename
-                    download_file(release_url, zip_path)
+                    source_download_file(release_url, zip_path)
+                _check_version_monotonicity(repo_root, other_addon_id, version)
                 published.append(
                     publish_release_zip(
                         zip_path,
@@ -1495,6 +1629,7 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
 
             print(f"\nProcessing: {REPO_ADDON_ID} (self)")
             package_path, version = _create_repository_package_in(repo_root, temp_dir)
+            _check_version_monotonicity(repo_root, REPO_ADDON_ID, version)
             published.append(
                 publish_release_zip(
                     package_path,
@@ -1574,7 +1709,10 @@ def build_repository():
                 source_zip = download_dir / "source.zip"
                 download_file(_source_archive_url(owner, repo, branch), source_zip)
                 zip_path, version, filename = create_source_package(
-                    source_zip, addon_id, download_dir
+                    source_zip,
+                    addon_id,
+                    download_dir,
+                    config["runtime_entries"],
                 )
             else:
                 release_url, version, filename = release
@@ -1632,8 +1770,17 @@ def main():
         action="store_true",
         help="validate the existing generated site",
     )
+    parser.add_argument(
+        "--download-current-manifest",
+        action="store_true",
+        help="download the current public repository manifest",
+    )
     arguments = parser.parse_args()
-    if arguments.validate_site:
+    if arguments.validate_site and arguments.download_current_manifest:
+        parser.error("validation and manifest download modes are mutually exclusive")
+    if arguments.download_current_manifest:
+        download_current_manifest()
+    elif arguments.validate_site:
         validate_site_manifest()
         print(f"Validated generated site: {SITE_OUTPUT}")
     else:

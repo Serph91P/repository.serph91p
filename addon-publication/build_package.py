@@ -31,6 +31,22 @@ EVIDENCE_FIELDS = (
     "artifact_sha256",
     "publication_id",
 )
+REPOSITORY_ONLY_COMPONENTS = {
+    ".git",
+    ".github",
+    ".hermes",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "tests",
+    "workflows",
+}
+REPOSITORY_ONLY_FILENAMES = {
+    ".gitignore",
+    "pyproject.toml",
+    "requirements-dev.txt",
+}
 
 
 class PackageError(RuntimeError):
@@ -70,6 +86,19 @@ def _normalized_path(value, *, allow_directory_marker=False):
     if any(part in ("", ".", "..") for part in PurePosixPath(normalized).parts):
         raise PackageError(f"normalized traversal path: {value!r}")
     return normalized, is_directory
+
+
+def _reject_repository_only_path(value):
+    parts = tuple(part.casefold() for part in PurePosixPath(value).parts)
+    filename = parts[-1]
+    if (
+        any(part in REPOSITORY_ONLY_COMPONENTS for part in parts)
+        or filename in REPOSITORY_ONLY_FILENAMES
+        or filename.endswith((".pyc", ".pyo"))
+        or filename == "readme"
+        or filename.startswith("readme.")
+    ):
+        raise PackageError(f"repository-only path is not allowed: {value!r}")
 
 
 def _runtime_entries(values):
@@ -163,6 +192,7 @@ def _collect_files(source_dir, entries):
         normalized, marker = _normalized_path(raw_relative)
         if marker:
             raise PackageError(f"unexpected directory marker: {raw_relative!r}")
+        _reject_repository_only_path(normalized)
         folded = normalized.casefold()
         if normalized in normalized_seen or folded in folded_seen:
             raise PackageError(f"source path collision: {raw_relative!r}")
@@ -314,6 +344,7 @@ def validate_package_archive(package_path, addon_id, runtime_entries):
                         f"archive member is outside exact root {addon_id!r}: {raw_name!r}"
                     )
                 relative = "/".join(parts[1:])
+                _reject_repository_only_path(relative)
                 if relative not in allowed_files and not any(
                     relative.startswith(prefix) for prefix in allowed_directories
                 ):

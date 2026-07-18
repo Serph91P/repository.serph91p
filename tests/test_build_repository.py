@@ -58,6 +58,7 @@ class BuildRepositoryRegressionTests(unittest.TestCase):
                 "repo": "plugin.video.gronkhtv",
                 "addon_id": "plugin.video.gronkhtv",
                 "branch": "main",
+                "runtime_entries": ("addon.xml", "default.py", "resources/"),
             }
 
             def copy_source(_url, destination):
@@ -547,6 +548,42 @@ class ReleaseValidationTests(unittest.TestCase):
 
 
 class SourceArchiveValidationTests(unittest.TestCase):
+    def test_source_fallback_selects_only_configured_runtime_entries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_zip = root / "source.zip"
+            addon_id = "plugin.example"
+            with zipfile.ZipFile(source_zip, "w") as archive:
+                archive.writestr("repo-main/addon.xml", addon_xml(addon_id, "1.0.0"))
+                archive.writestr("repo-main/addon.py", b"pass\n")
+                archive.writestr("repo-main/resources/icon.png", b"icon")
+                archive.writestr("repo-main/.github/workflows/test.yml", b"workflow")
+                archive.writestr("repo-main/tests/test_runtime.py", b"test")
+                archive.writestr("repo-main/README.md", b"readme")
+                archive.writestr("repo-main/LICENSE", b"license")
+                archive.writestr("repo-main/requirements-dev.txt", b"pytest\n")
+                archive.writestr("repo-main/.gitignore", b"cache\n")
+                archive.writestr("repo-main/pyproject.toml", b"[tool.test]\n")
+
+            package, version, filename = builder.create_source_package(
+                source_zip,
+                addon_id,
+                root,
+                ("addon.xml", "addon.py", "resources/"),
+            )
+
+            self.assertEqual("1.0.0", version)
+            self.assertEqual("plugin.example-1.0.0.zip", filename)
+            with zipfile.ZipFile(package) as archive:
+                self.assertEqual(
+                    {
+                        "plugin.example/addon.xml",
+                        "plugin.example/addon.py",
+                        "plugin.example/resources/icon.png",
+                    },
+                    set(archive.namelist()),
+                )
+
     def test_unsafe_or_ambiguous_source_archives_are_rejected(self):
         addon_id = "plugin.example"
         metadata = addon_xml(addon_id, "1.0.0")
@@ -585,7 +622,9 @@ class SourceArchiveValidationTests(unittest.TestCase):
                     for name, content in entries:
                         archive.writestr(name, content)
                 with self.subTest(label=label), self.assertRaises(RuntimeError):
-                    builder.create_source_package(source_zip, addon_id, root)
+                    builder.create_source_package(
+                        source_zip, addon_id, root, ("addon.xml", "default.py")
+                    )
 
     def test_source_archive_symlink_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -601,7 +640,9 @@ class SourceArchiveValidationTests(unittest.TestCase):
                 archive.writestr(symlink, "target")
 
             with self.assertRaises(RuntimeError):
-                builder.create_source_package(source_zip, "plugin.example", root)
+                builder.create_source_package(
+                    source_zip, "plugin.example", root, ("addon.xml",)
+                )
 
     def test_source_archive_directory_shaped_special_types_are_rejected(self):
         special_types = {
@@ -622,7 +663,73 @@ class SourceArchiveValidationTests(unittest.TestCase):
                     archive.writestr(special, b"")
 
                 with self.subTest(label=label), self.assertRaises(RuntimeError):
-                    builder.create_source_package(source_zip, "plugin.example", root)
+                    builder.create_source_package(
+                        source_zip, "plugin.example", root, ("addon.xml",)
+                    )
+
+    def test_source_fallback_rejects_nested_repository_only_members(self):
+        denied = (
+            "resources/generated.pyc",
+            "resources/__pycache__/generated.py",
+            "resources/.github/workflows/publish.yml",
+            "resources/WorkFlows/publish.yml",
+            "resources/.HeRmEs/config.yaml",
+            "resources/Requirements-Dev.TXT",
+            "resources/.GITIGNORE",
+            "resources/PyProject.TOML",
+            "resources/tests/test_runtime.py",
+            "resources/readME.md",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index, relative in enumerate(denied):
+                source_zip = root / f"denied-{index}.zip"
+                with zipfile.ZipFile(source_zip, "w") as archive:
+                    archive.writestr(
+                        "repo-main/addon.xml", addon_xml("plugin.example", "1.0.0")
+                    )
+                    archive.writestr(f"repo-main/{relative}", b"repository-only")
+                with self.subTest(relative=relative):
+                    with self.assertRaisesRegex(RuntimeError, "repository-only"):
+                        builder.create_source_package(
+                            source_zip,
+                            "plugin.example",
+                            root,
+                            ("addon.xml", "resources/"),
+                        )
+
+    def test_source_fallback_accepts_precise_runtime_near_matches(self):
+        accepted = (
+            "resources/workflows-helper.py",
+            "resources/.hermes-data.json",
+            "resources/requirements-device.txt",
+            "resources/gitignore.txt",
+            "resources/my-pyproject.toml",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_zip = root / "accepted.zip"
+            with zipfile.ZipFile(source_zip, "w") as archive:
+                archive.writestr(
+                    "repo-main/addon.xml", addon_xml("plugin.example", "1.0.0")
+                )
+                for relative in accepted:
+                    archive.writestr(f"repo-main/{relative}", b"runtime")
+
+            package, _version, _filename = builder.create_source_package(
+                source_zip,
+                "plugin.example",
+                root,
+                ("addon.xml", "resources/"),
+            )
+
+            with zipfile.ZipFile(package) as archive:
+                self.assertTrue(
+                    all(
+                        f"plugin.example/{relative}" in archive.namelist()
+                        for relative in accepted
+                    )
+                )
 
 
 class SiteManifestTests(unittest.TestCase):

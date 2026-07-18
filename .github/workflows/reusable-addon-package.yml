@@ -143,9 +143,10 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check \
+            --require-hashes --no-deps \
             --requirement tooling/addon-publication/addon-check-requirements.txt
           python -m pip install --disable-pip-version-check \
-            --no-deps \
+            --no-deps --no-build-isolation \
             'git+https://github.com/xbmc/addon-check.git@67be5c1eca23e01402a447f995e2216bd83202f3'
           python - "${PACKAGE_PATH}" checker/extracted <<'PY'
           import sys
