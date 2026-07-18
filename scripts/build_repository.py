@@ -2,6 +2,7 @@
 """Build and validate the Serph91P Kodi repository."""
 
 import argparse
+import datetime
 import hashlib
 import json
 import os
@@ -21,63 +22,173 @@ ADDONS = [
         "repo": "plugin.video.gronkhtv",
         "addon_id": "plugin.video.gronkhtv",
         "branch": "main",
+        "publication_enabled": False,
+        "publication_branch": "develop",
+        "validation_workflow": "Add-on Validations",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_id": 234989014,
+        "package_artifact_name": "addon-package",
+        "evidence_artifact_name": "validation-evidence",
+        "runtime_entries": ("addon.xml", "addon.py", "resources/"),
     },
     {
         "owner": "Serph91P",
         "repo": "plugin.video.twitch",
         "addon_id": "plugin.video.twitch",
         "branch": "main",
+        "publication_enabled": False,
+        "publication_branch": "develop",
+        "validation_workflow": "Add-on Validations",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_id": 211623879,
+        "package_artifact_name": "addon-package",
+        "evidence_artifact_name": "validation-evidence",
+        "runtime_entries": ("addon.xml", "changelog.txt", "resources/"),
     },
     {
         "owner": "Serph91P",
         "repo": "script.module.python.twitch",
         "addon_id": "script.module.python.twitch",
         "branch": "main",
+        "publication_enabled": False,
+        "publication_branch": "develop",
+        "validation_workflow": "Add-on Validations",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_id": 211624357,
+        "package_artifact_name": "addon-package",
+        "evidence_artifact_name": "validation-evidence",
+        "runtime_entries": ("addon.xml", "changelog.txt", "resources/"),
     },
     {
         "owner": "Serph91P",
         "repo": "PlexKodiConnect",
         "addon_id": "plugin.video.plexkodiconnect",
         "branch": "main",
+        "publication_enabled": False,
+        "publication_branch": "develop",
+        "validation_workflow": "Add-on Validations",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_id": 234989955,
+        "package_artifact_name": "addon-package",
+        "evidence_artifact_name": "validation-evidence",
+        "runtime_entries": (
+            "addon.xml",
+            "changelog.txt",
+            "context_extras.py",
+            "context_menu.py",
+            "default.py",
+            "service.py",
+            "fanart.jpg",
+            "icon.png",
+            "themoviedb.png",
+            "resources/",
+        ),
     },
     {
         "owner": "Serph91P",
         "repo": "plugin.video.plexkodiconnect.movies",
         "addon_id": "plugin.video.plexkodiconnect.movies",
         "branch": "main",
+        "publication_enabled": False,
+        "publication_branch": "develop",
+        "validation_workflow": "Add-on Validations",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_id": 235177143,
+        "package_artifact_name": "addon-package",
+        "evidence_artifact_name": "validation-evidence",
+        "runtime_entries": ("addon.xml", "changelog.txt", "default.py", "icon.png"),
     },
     {
         "owner": "Serph91P",
         "repo": "plugin.video.plexkodiconnect.tvshows",
         "addon_id": "plugin.video.plexkodiconnect.tvshows",
         "branch": "main",
+        "publication_enabled": False,
+        "publication_branch": "develop",
+        "validation_workflow": "Add-on Validations",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_id": 235177212,
+        "package_artifact_name": "addon-package",
+        "evidence_artifact_name": "validation-evidence",
+        "runtime_entries": ("addon.xml", "changelog.txt", "default.py", "icon.png"),
     },
     {
         "owner": "Serph91P",
         "repo": "script.tubecast",
         "addon_id": "script.tubecast",
         "branch": "main",
+        "publication_enabled": False,
+        "publication_branch": "develop",
+        "validation_workflow": "Add-on Validations",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_id": 234990067,
+        "package_artifact_name": "addon-package",
+        "evidence_artifact_name": "validation-evidence",
+        "runtime_entries": ("addon.xml", "main.py", "script.py", "resources/"),
     },
 ]
 
+ARTIFACT_RETENTION_DAYS = 30
+ARTIFACT_PAGE_SIZE = 100
+MAX_ARTIFACT_PAGES = 100
+REPOSITORY_ONLY_COMPONENTS = {
+    ".git",
+    ".github",
+    ".hermes",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "tests",
+    "workflows",
+}
+REPOSITORY_ONLY_FILENAMES = {
+    ".gitignore",
+    "pyproject.toml",
+    "requirements-dev.txt",
+}
+KODI_VERSION_RE = re.compile(
+    r"^[0-9]+(?:\.[0-9]+)*(?:\+[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$",
+    re.ASCII,
+)
+
+
+def _source_repo_key(config):
+    return f"{config['owner']}/{config['repo']}"
+
+
+def _source_config(source_repo):
+    matches = [config for config in ADDONS if _source_repo_key(config) == source_repo]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"source_repo {source_repo!r} is not in the configured ADDONS list"
+        )
+    return matches[0]
+
 
 def _parse_kodi_version(version_string):
-    """Parse a dotted numeric addon version into a comparable tuple of ints.
+    """Parse the accepted Kodi version grammar into a total-order key."""
+    if not isinstance(version_string, str) or not KODI_VERSION_RE.fullmatch(
+        version_string
+    ):
+        raise RuntimeError(f"Invalid addon version segment in {version_string!r}")
 
-    Fails closed if the string is empty or any segment is not a non-negative
-    integer.
-    """
-    if not version_string or not isinstance(version_string, str):
-        raise RuntimeError(f"Invalid addon version: {version_string!r}")
-    parts = version_string.split(".")
-    parsed = []
-    for part in parts:
-        if not part or not part.isascii() or not part.isdigit():
-            raise RuntimeError(f"Invalid addon version segment in {version_string!r}")
-        parsed.append(int(part))
-    if not parsed:
-        raise RuntimeError(f"Invalid addon version: {version_string!r}")
-    return tuple(parsed)
+    core_text, separator, suffix_text = version_string.partition("+")
+    core = [int(part) for part in core_text.split(".")]
+    while len(core) > 1 and core[-1] == 0:
+        core.pop()
+
+    if not separator:
+        suffix = (0,)
+    else:
+        tokens = []
+        for token in suffix_text.split("."):
+            if token.isdigit():
+                tokens.append((0, int(token)))
+            else:
+                tokens.append((1, token.casefold()))
+        suffix = (1, tuple(tokens))
+    return tuple(core), suffix
 
 
 def _check_version_monotonicity(repo_root, addon_id, candidate_version):
@@ -91,7 +202,10 @@ def _check_version_monotonicity(repo_root, addon_id, candidate_version):
     """
     manifest_path = repo_root / "repo" / "addons.xml"
     if not manifest_path.is_file():
-        return
+        raise RuntimeError(
+            f"Cannot enforce version floor without current repository manifest "
+            f"{manifest_path}"
+        )
     try:
         root = ET.parse(manifest_path).getroot()
     except (OSError, ET.ParseError) as error:
@@ -139,7 +253,64 @@ REPO_OUTPUT = REPO_ROOT / "repo"
 SITE_OUTPUT = REPO_ROOT / "_site"
 TEMP_DIR = REPO_ROOT / "_temp"
 GH_API = "https://api.github.com"
+CURRENT_MANIFEST_URL = "https://serph91p.github.io/repository.serph91p/addons.xml"
+MAX_MANIFEST_BYTES = 5 * 1024 * 1024
 NO_RELEASE = object()
+
+
+def download_current_manifest(repo_root=None):
+    """Download and validate the public target manifest without credentials."""
+    if repo_root is None:
+        repo_root = REPO_ROOT
+    request = urllib.request.Request(
+        CURRENT_MANIFEST_URL,
+        headers={"Accept": "application/xml, text/xml"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        response_url = response.geturl()
+        final_url = urlsplit(response_url)
+        if (
+            final_url.scheme != "https"
+            or final_url.hostname != "serph91p.github.io"
+            or final_url.port not in (None, 443)
+            or final_url.path != "/repository.serph91p/addons.xml"
+        ):
+            raise RuntimeError(
+                f"Current repository manifest redirected to untrusted URL "
+                f"{response_url!r}"
+            )
+        content = response.read(MAX_MANIFEST_BYTES + 1)
+    if not content or len(content) > MAX_MANIFEST_BYTES:
+        raise RuntimeError("Current repository manifest is empty or too large")
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError as error:
+        raise RuntimeError(f"Current repository manifest is invalid: {error}") from error
+    if root.tag != "addons":
+        raise RuntimeError(
+            f"Current repository manifest has unexpected root {root.tag!r}"
+        )
+    seen = set()
+    for addon in root:
+        if addon.tag != "addon":
+            raise RuntimeError(
+                f"Current repository manifest has unexpected element {addon.tag!r}"
+            )
+        addon_id = addon.get("id")
+        version = addon.get("version")
+        if not addon_id or addon_id in seen:
+            raise RuntimeError(
+                f"Current repository manifest has missing or duplicate add-on ID "
+                f"{addon_id!r}"
+            )
+        _parse_kodi_version(version)
+        seen.add(addon_id)
+    destination = repo_root / "repo" / "addons.xml"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_suffix(".xml.tmp")
+    temporary.write_bytes(content)
+    os.replace(temporary, destination)
+    print(f"Downloaded current repository manifest: {destination}")
 
 
 def github_api_get(url):
@@ -236,15 +407,17 @@ def source_download_file(url, destination):
         raise
 
 
-def get_latest_release_zip(owner, repo, addon_id):
+def get_latest_release_zip(owner, repo, addon_id, api_get=None):
     """Return the one correctly named ZIP attached to the latest release."""
+    if api_get is None:
+        api_get = github_api_get
     releases_url = f"{GH_API}/repos/{quote(owner, safe='')}/{quote(repo, safe='')}"
     try:
-        data = github_api_get(f"{releases_url}/releases/latest")
+        data = api_get(f"{releases_url}/releases/latest")
     except urllib.error.HTTPError as error:
         if error.code != 404:
             raise
-        releases = github_api_get(f"{releases_url}/releases")
+        releases = api_get(f"{releases_url}/releases")
         if not isinstance(releases, list):
             raise RuntimeError(
                 f"Malformed release list after missing latest release for {owner}/{repo}"
@@ -309,6 +482,19 @@ def _validated_filename_component(value, description):
     return value
 
 
+def _reject_repository_only_path(value):
+    parts = tuple(part.casefold() for part in PurePosixPath(value).parts)
+    filename = parts[-1]
+    if (
+        any(part in REPOSITORY_ONLY_COMPONENTS for part in parts)
+        or filename in REPOSITORY_ONLY_FILENAMES
+        or filename.endswith((".pyc", ".pyo"))
+        or filename == "readme"
+        or filename.startswith("readme.")
+    ):
+        raise RuntimeError(f"repository-only path is not allowed: {value!r}")
+
+
 def _local_asset_paths(addon):
     """Return validated local paths referenced by Kodi metadata assets."""
     paths = []
@@ -346,6 +532,8 @@ def _validated_archive(archive, addon_id, release_version, release_filename):
             raise RuntimeError(f"Unsupported release archive member type: {name!r}")
         if path.parts[0] != addon_id:
             raise RuntimeError(f"Archive member has wrong root: {name!r}")
+        if not info.is_dir():
+            _reject_repository_only_path(PurePosixPath(*path.parts[1:]))
         canonical_name = relative_name.casefold()
         if canonical_name in canonical_names:
             raise RuntimeError(f"Duplicate archive member: {name!r}")
@@ -393,8 +581,14 @@ def _validated_archive(archive, addon_id, release_version, release_filename):
     return addon, assets
 
 
-def _validated_source_members(archive, addon_id):
+def _validated_source_members(archive, addon_id, runtime_entries):
     """Validate a GitHub source ZIP and return its embedded identity and files."""
+    if not runtime_entries:
+        raise RuntimeError("Runtime allowlist is empty")
+    allowed_files = {entry for entry in runtime_entries if not entry.endswith("/")}
+    directory_prefixes = tuple(
+        entry for entry in runtime_entries if entry.endswith("/")
+    )
     roots = set()
     canonical_names = set()
     addon_xml_members = []
@@ -420,9 +614,15 @@ def _validated_source_members(archive, addon_id):
         if info.is_dir():
             continue
         relative_path = PurePosixPath(*path.parts[1:])
+        relative = relative_path.as_posix()
+        if relative not in allowed_files and not any(
+            relative.startswith(prefix) for prefix in directory_prefixes
+        ):
+            continue
+        _reject_repository_only_path(relative_path)
         files.append((relative_path, info))
         members[relative_name] = info
-        if relative_path.name.casefold() == "addon.xml":
+        if relative == "addon.xml":
             addon_xml_members.append(relative_name)
 
     if len(roots) != 1:
@@ -450,16 +650,21 @@ def _validated_source_members(archive, addon_id):
         raise RuntimeError(
             f"Configured addon ID {addon_id!r} does not match embedded ID {embedded_id!r}"
         )
+    validate_runtime_allowlist(
+        [f"{addon_id}/{relative.as_posix()}" for relative, _info in files],
+        addon_id,
+        runtime_entries,
+    )
     return embedded_id, embedded_version, files
 
 
-def create_source_package(source_zip, addon_id, destination):
+def create_source_package(source_zip, addon_id, destination, runtime_entries):
     """Securely repackage a GitHub source archive as a Kodi addon ZIP."""
     _validated_filename_component(addon_id, "addon ID")
     try:
         with zipfile.ZipFile(source_zip, "r") as source:
             embedded_id, embedded_version, files = _validated_source_members(
-                source, addon_id
+                source, addon_id, runtime_entries
             )
             filename = f"{embedded_id}-{embedded_version}.zip"
             package = destination / filename
@@ -636,7 +841,13 @@ def _create_repository_package():
 
 
 def validate_dispatch_payload(payload):
-    """Validate the shape and types of a repository dispatch payload."""
+    """Validate the shape, types, and target-owned source policy.
+
+    Unknown fields including artifact names are rejected before any source API
+    access. The workflow identity, branch, and publication enabled flag are
+    compared against target-owned per-source policy, not selected by caller
+    values.
+    """
     if not isinstance(payload, dict):
         raise RuntimeError("Dispatch payload must be a JSON object")
     allowed_fields = {
@@ -645,9 +856,9 @@ def validate_dispatch_payload(payload):
         "validation_run_id",
         "validation_head_sha",
         "validation_workflow",
+        "validation_workflow_path",
         "expected_branch",
-        "package_artifact_name",
-        "evidence_artifact_name",
+        "publication_id",
     }
     unknown = set(payload.keys()) - allowed_fields
     if unknown:
@@ -658,6 +869,27 @@ def validate_dispatch_payload(payload):
     if not source_repo or not isinstance(source_repo, str) or "/" not in source_repo:
         raise RuntimeError(
             "Dispatch payload must contain a valid source_repo (owner/repo)"
+        )
+    source_config = _source_config(source_repo)
+    if not source_config["publication_enabled"]:
+        raise RuntimeError(
+            f"Immutable publication is disabled for source {source_repo!r}"
+        )
+    publication_id = payload.get("publication_id")
+    if not isinstance(publication_id, str) or publication_id.count("@") != 1:
+        raise RuntimeError(
+            f"Dispatch publication_id is malformed: {publication_id!r}"
+        )
+    publication_addon_id, publication_version = publication_id.split("@")
+    if not re.fullmatch(r"[0-9A-Za-z._-]+", publication_addon_id, re.ASCII):
+        raise RuntimeError(
+            f"Dispatch publication_id has an invalid addon ID: {publication_id!r}"
+        )
+    _parse_kodi_version(publication_version)
+    if publication_addon_id != source_config["addon_id"]:
+        raise RuntimeError(
+            f"Dispatch publication_id add-on {publication_addon_id!r} does not "
+            f"match configured addon {source_config['addon_id']!r}"
         )
     candidate_sha = payload.get("candidate_sha")
     if (
@@ -671,7 +903,11 @@ def validate_dispatch_payload(payload):
     if not all(c in "0123456789abcdef" for c in candidate_sha):
         raise RuntimeError(f"Dispatch candidate_sha must be hex: {candidate_sha!r}")
     validation_run_id = payload.get("validation_run_id")
-    if not isinstance(validation_run_id, int) or validation_run_id <= 0:
+    if (
+        isinstance(validation_run_id, bool)
+        or not isinstance(validation_run_id, int)
+        or validation_run_id <= 0
+    ):
         raise RuntimeError(
             f"Dispatch validation_run_id must be a positive integer: "
             f"{validation_run_id!r}"
@@ -693,13 +929,44 @@ def validate_dispatch_payload(payload):
     validation_workflow = payload.get("validation_workflow")
     if not validation_workflow or not isinstance(validation_workflow, str):
         raise RuntimeError("Dispatch validation_workflow must be a non-empty string")
+    if validation_workflow != source_config["validation_workflow"]:
+        raise RuntimeError(
+            f"Dispatch validation_workflow {validation_workflow!r} does not match "
+            f"target policy workflow {source_config['validation_workflow']!r}"
+        )
+    validation_workflow_path = payload.get("validation_workflow_path")
+    if (
+        not isinstance(validation_workflow_path, str)
+        or not re.fullmatch(
+            r"\.github/workflows/[0-9A-Za-z_.-]+\.ya?ml@develop",
+            validation_workflow_path,
+        )
+    ):
+        raise RuntimeError(
+            "Dispatch validation_workflow_path must identify a develop workflow run"
+        )
+    if validation_workflow_path != source_config["validation_workflow_path"]:
+        raise RuntimeError(
+            f"Dispatch validation_workflow_path {validation_workflow_path!r} does "
+            f"not match approved path "
+            f"{source_config['validation_workflow_path']!r}"
+        )
     expected_branch = payload.get("expected_branch")
     if not expected_branch or not isinstance(expected_branch, str):
         raise RuntimeError("Dispatch expected_branch must be a non-empty string")
+    if expected_branch != source_config["publication_branch"]:
+        raise RuntimeError(
+            f"Dispatch expected_branch {expected_branch!r} does not match "
+            f"approved branch {source_config['publication_branch']!r}"
+        )
 
 
 def validate_immutable_evidence(
-    evidence, candidate_sha, validation_run_id, validation_head_sha
+    evidence,
+    candidate_sha,
+    validation_run_id,
+    validation_head_sha,
+    publication_id,
 ):
     """Validate evidence JSON against the immutable publication contract."""
     if not isinstance(evidence, dict):
@@ -762,41 +1029,81 @@ def validate_immutable_evidence(
             f"Evidence publication_id {evidence['publication_id']!r} does not match "
             f"expected {expected_pub!r}"
         )
+    if evidence["publication_id"] != publication_id:
+        raise RuntimeError(
+            f"Evidence publication_id {evidence['publication_id']!r} does not match "
+            f"dispatch publication_id {publication_id!r}"
+        )
 
 
-def validate_github_run(
-    run_data,
-    validation_run_id,
-    validation_head_sha,
-    validation_workflow,
-    expected_branch,
-):
-    """Validate a GitHub Actions run response against dispatch fields."""
+def validate_github_run(run_data, validation_run_id, validation_head_sha, source_config):
+    """Validate a GitHub Actions run response against target-owned policy.
+
+    Compares the run directly against target policy values, not caller-supplied
+    dispatch values. Requires exact run ID, candidate/head SHA, configured
+    workflow name, configured path/ref, configured publication branch, completed
+    status, successful conclusion, push event, exact source repository, and
+    stable workflow ID when configured.
+    """
     if not isinstance(run_data, dict):
         raise RuntimeError("GitHub run data must be a JSON object")
     if run_data.get("id") != int(validation_run_id):
         raise RuntimeError(
-            f"Run ID {run_data.get('id')!r} does not match dispatch "
+            f"Run ID {run_data.get('id')!r} does not match "
             f"validation_run_id {int(validation_run_id)!r}"
         )
     if run_data.get("head_sha") != validation_head_sha:
         raise RuntimeError(
-            f"Run head_sha {run_data.get('head_sha')!r} does not match dispatch "
+            f"Run head_sha {run_data.get('head_sha')!r} does not match "
             f"validation_head_sha {validation_head_sha!r}"
         )
-    if run_data.get("name") != validation_workflow:
+    if run_data.get("name") != source_config["validation_workflow"]:
         raise RuntimeError(
-            f"Run workflow name {run_data.get('name')!r} does not match dispatch "
-            f"validation_workflow {validation_workflow!r}"
+            f"Run workflow name {run_data.get('name')!r} does not match "
+            f"target policy workflow {source_config['validation_workflow']!r}"
         )
-    if run_data.get("head_branch") != expected_branch:
+    run_branch = run_data.get("head_branch")
+    if run_branch != source_config["publication_branch"]:
         raise RuntimeError(
-            f"Run head_branch {run_data.get('head_branch')!r} does not match "
-            f"dispatch expected_branch {expected_branch!r}"
+            f"Run head_branch {run_branch!r} does not match "
+            f"target policy branch {source_config['publication_branch']!r}"
+        )
+    run_path = run_data.get("path")
+    if not isinstance(run_path, str) or not re.fullmatch(
+        r"\.github/workflows/[0-9A-Za-z_.-]+\.ya?ml", run_path
+    ):
+        raise RuntimeError(f"Run workflow path is malformed: {run_path!r}")
+    run_workflow_identity = f"{run_path}@{run_branch}"
+    if run_workflow_identity != source_config["validation_workflow_path"]:
+        raise RuntimeError(
+            f"Run workflow identity {run_workflow_identity!r} does not match "
+            f"target policy path {source_config['validation_workflow_path']!r}"
+        )
+    if run_data.get("status") != "completed":
+        raise RuntimeError(
+            f"Run status {run_data.get('status')!r} is not 'completed'"
         )
     if run_data.get("conclusion") != "success":
         raise RuntimeError(
             f"Run conclusion {run_data.get('conclusion')!r} is not 'success'"
+        )
+    if run_data.get("event") != "push":
+        raise RuntimeError(
+            f"Run event {run_data.get('event')!r} is not 'push'"
+        )
+    run_repo = run_data.get("repository", {})
+    if not isinstance(run_repo, dict) or run_repo.get("full_name") != (
+        f"{source_config['owner']}/{source_config['repo']}"
+    ):
+        raise RuntimeError(
+            f"Run repository {run_repo!r} does not match target "
+            f"{source_config['owner']}/{source_config['repo']}"
+        )
+    if run_data.get("workflow_id") != source_config["validation_workflow_id"]:
+        raise RuntimeError(
+            f"Run workflow_id {run_data.get('workflow_id')!r} does not match "
+            f"target policy workflow_id "
+            f"{source_config['validation_workflow_id']!r}"
         )
 
 
@@ -809,7 +1116,244 @@ def verify_package_sha256(zip_path, expected_sha256):
         )
 
 
-def validate_archive_topology(zip_path, addon_id, addon_version):
+def fetch_validated_run_artifacts(source_repo, run_id, source_config, now=None):
+    """Paginate every page of run artifacts and validate the complete set.
+
+    Requests every page explicitly. Validates every page shape, every artifact
+    record, requires exactly two total artifacts (one package, one evidence),
+    rejects unexpected names, duplicate required names (including on later
+    pages), duplicate IDs, malformed fields, expired or not-currently-live
+    artifacts, and retention other than exactly 30 days. Does not download
+    before the complete set is validated.
+    """
+    if now is None:
+        now = datetime.datetime.now(datetime.timezone.utc)
+    if not isinstance(now, datetime.datetime) or now.tzinfo is None:
+        raise RuntimeError("Artifact validation time must include a timezone")
+    now = now.astimezone(datetime.timezone.utc)
+    package_name = source_config["package_artifact_name"]
+    evidence_name = source_config["evidence_artifact_name"]
+    required_names = {package_name, evidence_name}
+    seen_ids = set()
+    seen_names = set()
+    all_artifacts = []
+    page = 1
+    expected_total = None
+
+    while True:
+        if page > MAX_ARTIFACT_PAGES:
+            raise RuntimeError("Artifact pagination exceeded the page limit")
+        url = (
+            f"{GH_API}/repos/{quote(source_repo, safe='/')}/actions/runs/"
+            f"{run_id}/artifacts?per_page={ARTIFACT_PAGE_SIZE}&page={page}"
+        )
+        page_data = source_github_api_get(url)
+        if not isinstance(page_data, dict):
+            raise RuntimeError(
+                f"Artifact page {page} response is not a JSON object"
+            )
+        total_count = page_data.get("total_count")
+        if (
+            isinstance(total_count, bool)
+            or not isinstance(total_count, int)
+            or total_count < 0
+        ):
+            raise RuntimeError(
+                f"Artifact page {page} has invalid total_count: {total_count!r}"
+            )
+        if expected_total is None:
+            expected_total = total_count
+        elif total_count != expected_total:
+            raise RuntimeError(
+                f"Artifact page {page} total_count {total_count} does not "
+                f"match first page total_count {expected_total}"
+            )
+        artifacts = page_data.get("artifacts")
+        if not isinstance(artifacts, list):
+            raise RuntimeError(
+                f"Artifact page {page} has non-list artifacts"
+            )
+        for artifact in artifacts:
+            if not isinstance(artifact, dict):
+                raise RuntimeError(
+                    f"Artifact record on page {page} is not a JSON object"
+                )
+            artifact_id = artifact.get("id")
+            if (
+                isinstance(artifact_id, bool)
+                or not isinstance(artifact_id, int)
+                or artifact_id <= 0
+            ):
+                raise RuntimeError(
+                    f"Artifact on page {page} has invalid id: {artifact_id!r}"
+                )
+            if artifact_id in seen_ids:
+                raise RuntimeError(
+                    f"Duplicate artifact id {artifact_id} on page {page}"
+                )
+            seen_ids.add(artifact_id)
+            name = artifact.get("name")
+            if not isinstance(name, str) or not name:
+                raise RuntimeError(
+                    f"Artifact id {artifact_id} on page {page} has "
+                    f"invalid name: {name!r}"
+                )
+            if name not in required_names:
+                raise RuntimeError(
+                    f"Unexpected artifact name {name!r} on page {page}"
+                )
+            if name in seen_names:
+                raise RuntimeError(
+                    f"Duplicate required artifact name {name!r} on page {page}"
+                )
+            seen_names.add(name)
+            expired = artifact.get("expired")
+            if not isinstance(expired, bool):
+                raise RuntimeError(
+                    f"Artifact {name!r} id {artifact_id} has "
+                    f"invalid expired field: {expired!r}"
+                )
+            if expired:
+                raise RuntimeError(
+                    f"Artifact {name!r} id {artifact_id} has expired"
+                )
+            created_at = artifact.get("created_at")
+            expires_at = artifact.get("expires_at")
+            if not isinstance(created_at, str) or not created_at:
+                raise RuntimeError(
+                    f"Artifact {name!r} id {artifact_id} has "
+                    f"invalid created_at: {created_at!r}"
+                )
+            if not isinstance(expires_at, str) or not expires_at:
+                raise RuntimeError(
+                    f"Artifact {name!r} id {artifact_id} has "
+                    f"invalid expires_at: {expires_at!r}"
+                )
+            try:
+                created_dt = datetime.datetime.strptime(
+                    created_at, "%Y-%m-%dT%H:%M:%SZ"
+                ).replace(tzinfo=datetime.timezone.utc)
+                expires_dt = datetime.datetime.strptime(
+                    expires_at, "%Y-%m-%dT%H:%M:%SZ"
+                ).replace(tzinfo=datetime.timezone.utc)
+            except ValueError as error:
+                raise RuntimeError(
+                    f"Artifact {name!r} id {artifact_id} has "
+                    f"malformed timestamp: {error}"
+                ) from error
+            retention = expires_dt - created_dt
+            if retention != datetime.timedelta(days=ARTIFACT_RETENTION_DAYS):
+                raise RuntimeError(
+                    f"Artifact {name!r} id {artifact_id} has retention "
+                    f"{retention}, expected {ARTIFACT_RETENTION_DAYS} days"
+                )
+            if now < created_dt or now >= expires_dt:
+                raise RuntimeError(
+                    f"Artifact {name!r} id {artifact_id} retention window "
+                    f"is not currently live"
+                )
+            download_url = artifact.get("archive_download_url")
+            if not isinstance(download_url, str) or not download_url:
+                raise RuntimeError(
+                    f"Artifact {name!r} id {artifact_id} has "
+                    f"invalid archive_download_url"
+                )
+            run_binding = artifact.get("workflow_run")
+            if not isinstance(run_binding, dict) or run_binding.get("id") != run_id:
+                raise RuntimeError(
+                    f"Artifact {name!r} id {artifact_id} workflow_run "
+                    f"id does not match run {run_id}"
+                )
+            all_artifacts.append(artifact)
+        if len(artifacts) < ARTIFACT_PAGE_SIZE:
+            if expected_total is not None and len(all_artifacts) >= expected_total:
+                break
+            if not artifacts:
+                break
+        page += 1
+
+    if expected_total is not None and len(all_artifacts) != expected_total:
+        raise RuntimeError(
+            f"Fetched {len(all_artifacts)} artifacts but total_count "
+            f"is {expected_total}"
+        )
+    if len(all_artifacts) != 2:
+        raise RuntimeError(
+            f"Expected exactly two artifacts, found {len(all_artifacts)}"
+        )
+    selected = {}
+    for artifact in all_artifacts:
+        selected[artifact["name"]] = artifact
+    return selected
+
+
+def validate_runtime_allowlist(members, addon_id, runtime_entries):
+    """Validate archive members against the target-owned runtime allowlist.
+
+    Slash-terminated directories authorize and require their subtree. Exact
+    file entries are required. Rejects undeclared runtime members.
+    """
+    if not runtime_entries:
+        raise RuntimeError("Runtime allowlist is empty")
+    dir_prefixes = []
+    allowed_files = set()
+    for entry in runtime_entries:
+        if entry.endswith("/"):
+            dir_prefixes.append(entry)
+        else:
+            allowed_files.add(entry)
+    runtime_members = []
+    for member in members:
+        name = member.filename if hasattr(member, "filename") else member
+        relative_name = (
+            name[:-1]
+            if hasattr(member, "is_dir") and member.is_dir() and name.endswith("/")
+            else name
+        )
+        path = PurePosixPath(relative_name)
+        if len(path.parts) < 2:
+            continue
+        if path.parts[0] != addon_id:
+            continue
+        subpath = "/".join(path.parts[1:])
+        if subpath in ("", "."):
+            continue
+        is_dir = (
+            hasattr(member, "is_dir") and member.is_dir()
+        ) or name.endswith("/")
+        if is_dir:
+            continue
+        _reject_repository_only_path(subpath)
+        matched = False
+        for prefix in dir_prefixes:
+            if subpath.startswith(prefix):
+                matched = True
+                break
+        if not matched and subpath in allowed_files:
+            matched = True
+        if not matched:
+            raise RuntimeError(
+                f"Undeclared runtime member {subpath!r} not in "
+                f"allowlist for {addon_id}"
+            )
+        runtime_members.append(subpath)
+    for entry in runtime_entries:
+        if entry.endswith("/"):
+            has_subtree = any(m.startswith(entry) for m in runtime_members)
+            if not has_subtree:
+                raise RuntimeError(
+                    f"Runtime allowlist directory {entry!r} requires "
+                    f"at least one member in subtree for {addon_id}"
+                )
+        else:
+            if entry not in runtime_members:
+                raise RuntimeError(
+                    f"Runtime allowlist file {entry!r} not found "
+                    f"in archive for {addon_id}"
+                )
+
+
+def validate_archive_topology(zip_path, addon_id, addon_version, runtime_entries=None):
     """Validate archive member structure, addon.xml identity, and compression type."""
     _validated_filename_component(addon_id, "addon ID")
     _validated_filename_component(addon_version, "addon version")
@@ -831,6 +1375,8 @@ def validate_archive_topology(zip_path, addon_id, addon_version):
                     )
                 if path.parts[0] != addon_id:
                     raise RuntimeError(f"Archive member has wrong root: {name!r}")
+                if not info.is_dir():
+                    _reject_repository_only_path(PurePosixPath(*path.parts[1:]))
                 canonical_name = relative_name.casefold()
                 if canonical_name in canonical_names:
                     raise RuntimeError(f"Duplicate archive member: {name!r}")
@@ -861,6 +1407,10 @@ def validate_archive_topology(zip_path, addon_id, addon_version):
                 raise RuntimeError(
                     f"Evidence addon_version {addon_version!r} does not match "
                     f"embedded version {embedded_version!r}"
+                )
+            if runtime_entries is not None:
+                validate_runtime_allowlist(
+                    archive.infolist(), addon_id, runtime_entries
                 )
             for info in archive.infolist():
                 if not info.is_dir():
@@ -957,36 +1507,17 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
     candidate_sha = dispatch_payload["candidate_sha"]
     validation_run_id = dispatch_payload["validation_run_id"]
     validation_head_sha = dispatch_payload["validation_head_sha"]
-    validation_workflow = dispatch_payload["validation_workflow"]
-    expected_branch = dispatch_payload["expected_branch"]
-    package_artifact_name = dispatch_payload.get(
-        "package_artifact_name", "addon-package"
-    )
-    evidence_artifact_name = dispatch_payload.get(
-        "evidence_artifact_name", "validation-evidence"
-    )
+    publication_id = dispatch_payload["publication_id"]
+    source_config = _source_config(source_repo)
+    expected_branch = source_config["publication_branch"]
+    package_artifact_name = source_config["package_artifact_name"]
+    evidence_artifact_name = source_config["evidence_artifact_name"]
 
-    source_config = None
-    for config in ADDONS:
-        config_repo = f"{config['owner']}/{config['repo']}"
-        if config_repo == source_repo:
-            source_config = config
-            break
-    if source_config is None:
-        raise RuntimeError(
-            f"source_repo {source_repo!r} is not in the configured ADDONS list"
-        )
     run_data = source_github_api_get(
         f"{GH_API}/repos/{quote(source_repo, safe='/')}/actions/runs/"
         f"{validation_run_id}"
     )
-    validate_github_run(
-        run_data,
-        validation_run_id,
-        validation_head_sha,
-        validation_workflow,
-        expected_branch,
-    )
+    validate_github_run(run_data, validation_run_id, validation_head_sha, source_config)
     source_ref_url = (
         f"{GH_API}/repos/{quote(source_repo, safe='/')}/git/ref/heads/"
         f"{quote(expected_branch, safe='')}"
@@ -999,36 +1530,11 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
             f"{current_sha!r} does not match candidate_sha {candidate_sha!r}"
         )
 
-    artifacts_data = source_github_api_get(
-        f"{GH_API}/repos/{quote(source_repo, safe='/')}/actions/runs/"
-        f"{validation_run_id}/artifacts"
+    selected = fetch_validated_run_artifacts(
+        source_repo, validation_run_id, source_config
     )
-    evidence_artifacts = [
-        a
-        for a in artifacts_data.get("artifacts", [])
-        if a.get("name") == evidence_artifact_name
-    ]
-    package_artifacts = [
-        a
-        for a in artifacts_data.get("artifacts", [])
-        if a.get("name") == package_artifact_name
-    ]
-    if len(evidence_artifacts) != 1:
-        raise RuntimeError(
-            f"Expected exactly one '{evidence_artifact_name}' artifact, "
-            f"found {len(evidence_artifacts)}"
-        )
-    if len(package_artifacts) != 1:
-        raise RuntimeError(
-            f"Expected exactly one '{package_artifact_name}' artifact, "
-            f"found {len(package_artifacts)}"
-        )
-    evidence_artifact = evidence_artifacts[0]
-    package_artifact = package_artifacts[0]
-    if evidence_artifact.get("expired", False):
-        raise RuntimeError("Evidence artifact has expired")
-    if package_artifact.get("expired", False):
-        raise RuntimeError("Package artifact has expired")
+    evidence_artifact = selected[evidence_artifact_name]
+    package_artifact = selected[package_artifact_name]
 
     temp_dir = repo_root / "_temp"
     staging = repo_root / "_staging"
@@ -1050,8 +1556,6 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
         source_download_file(
             evidence_artifact["archive_download_url"], evidence_archive
         )
-        source_download_file(package_artifact["archive_download_url"], package_archive)
-
         with zipfile.ZipFile(evidence_archive, "r") as zf:
             evidence_members = [m for m in zf.namelist() if not m.endswith("/")]
             if evidence_members != ["validation-evidence.json"]:
@@ -1062,7 +1566,11 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
             evidence = json.loads(zf.read("validation-evidence.json"))
 
         validate_immutable_evidence(
-            evidence, candidate_sha, validation_run_id, validation_head_sha
+            evidence,
+            candidate_sha,
+            validation_run_id,
+            validation_head_sha,
+            publication_id,
         )
 
         addon_id = evidence["addon_id"]
@@ -1087,6 +1595,8 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
 
         _check_version_monotonicity(repo_root, addon_id, addon_version)
 
+        source_download_file(package_artifact["archive_download_url"], package_archive)
+
         with zipfile.ZipFile(package_archive, "r") as zf:
             package_members = [m for m in zf.namelist() if not m.endswith("/")]
             if package_members != [asset_name]:
@@ -1099,7 +1609,10 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
                 shutil.copyfileobj(src, dst)
 
         verify_package_sha256(addon_zip_path, evidence["artifact_sha256"])
-        validate_archive_topology(addon_zip_path, addon_id, addon_version)
+        validate_archive_topology(
+            addon_zip_path, addon_id, addon_version,
+            source_config["runtime_entries"],
+        )
 
         published = []
         try:
@@ -1114,22 +1627,33 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
                 repo = config["repo"]
                 other_addon_id = config["addon_id"]
                 print(f"\nProcessing: {other_addon_id} ({owner}/{repo})")
-                release = get_latest_release_zip(owner, repo, other_addon_id)
+                release = get_latest_release_zip(
+                    owner,
+                    repo,
+                    other_addon_id,
+                    api_get=source_github_api_get,
+                )
                 other_download_dir = temp_dir / other_addon_id
                 other_download_dir.mkdir(parents=True)
                 if release is NO_RELEASE:
                     branch = config["branch"]
                     print(f"  No release found, building from source ({branch} branch)")
                     source_zip = other_download_dir / "source.zip"
-                    download_file(_source_archive_url(owner, repo, branch), source_zip)
+                    source_download_file(
+                        _source_archive_url(owner, repo, branch), source_zip
+                    )
                     zip_path, version, filename = create_source_package(
-                        source_zip, other_addon_id, other_download_dir
+                        source_zip,
+                        other_addon_id,
+                        other_download_dir,
+                        config["runtime_entries"],
                     )
                 else:
                     release_url, version, filename = release
                     print(f"  Found release: v{version} ({filename})")
                     zip_path = other_download_dir / filename
-                    download_file(release_url, zip_path)
+                    source_download_file(release_url, zip_path)
+                _check_version_monotonicity(repo_root, other_addon_id, version)
                 published.append(
                     publish_release_zip(
                         zip_path,
@@ -1143,6 +1667,7 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
 
             print(f"\nProcessing: {REPO_ADDON_ID} (self)")
             package_path, version = _create_repository_package_in(repo_root, temp_dir)
+            _check_version_monotonicity(repo_root, REPO_ADDON_ID, version)
             published.append(
                 publish_release_zip(
                     package_path,
@@ -1222,7 +1747,10 @@ def build_repository():
                 source_zip = download_dir / "source.zip"
                 download_file(_source_archive_url(owner, repo, branch), source_zip)
                 zip_path, version, filename = create_source_package(
-                    source_zip, addon_id, download_dir
+                    source_zip,
+                    addon_id,
+                    download_dir,
+                    config["runtime_entries"],
                 )
             else:
                 release_url, version, filename = release
@@ -1280,8 +1808,17 @@ def main():
         action="store_true",
         help="validate the existing generated site",
     )
+    parser.add_argument(
+        "--download-current-manifest",
+        action="store_true",
+        help="download the current public repository manifest",
+    )
     arguments = parser.parse_args()
-    if arguments.validate_site:
+    if arguments.validate_site and arguments.download_current_manifest:
+        parser.error("validation and manifest download modes are mutually exclusive")
+    if arguments.download_current_manifest:
+        download_current_manifest()
+    elif arguments.validate_site:
         validate_site_manifest()
         print(f"Validated generated site: {SITE_OUTPUT}")
     else:

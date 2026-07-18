@@ -1,0 +1,178 @@
+name: Reusable Add-on Package
+
+on:
+  workflow_call:
+    inputs:
+      addon_id:
+        description: Exact add-on ID required in addon.xml and used as the single archive root.
+        required: true
+        type: string
+      runtime_entries_json:
+        description: JSON array of exact runtime files and slash-terminated directories to package.
+        required: true
+        type: string
+    outputs:
+      addon_version:
+        description: Validated version parsed from the packaged addon.xml.
+        value: ${{ jobs.package.outputs.addon_version }}
+      asset_name:
+        description: Deterministic package file name uploaded in addon-package.
+        value: ${{ jobs.package.outputs.asset_name }}
+      artifact_sha256:
+        description: Lowercase SHA-256 of the final package ZIP bytes.
+        value: ${{ jobs.package.outputs.artifact_sha256 }}
+      publication_id:
+        description: Exact add-on publication identity in addon_id@addon_version form.
+        value: ${{ jobs.package.outputs.publication_id }}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      addon_version: ${{ steps.build.outputs.addon_version }}
+      asset_name: ${{ steps.build.outputs.asset_name }}
+      artifact_sha256: ${{ steps.build.outputs.artifact_sha256 }}
+      publication_id: ${{ steps.build.outputs.publication_id }}
+    steps:
+      - name: Resolve immutable tooling revision
+        id: tooling-ref
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          expected_prefix = "Serph91P/repository.serph91p/.github/workflows/reusable-addon-package.yml@"
+          request_url = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL", "")
+          request_token = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "")
+          parsed_url = urllib.parse.urlsplit(request_url)
+          if parsed_url.scheme != "https" or not request_token:
+              raise SystemExit("GitHub OIDC environment is unavailable")
+          separator = "&" if parsed_url.query else "?"
+          request = urllib.request.Request(
+              request_url + separator + "audience=repository.serph91p-tooling",
+              headers={"Authorization": f"Bearer {request_token}"},
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  oidc_response = json.load(response)
+          except (OSError, ValueError, urllib.error.HTTPError, urllib.error.URLError) as error:
+              raise SystemExit("Could not resolve reusable workflow identity") from error
+          token = oidc_response.get("value") if isinstance(oidc_response, dict) else None
+          if not isinstance(token, str) or token.count(".") != 2:
+              raise SystemExit("GitHub OIDC response is malformed")
+          encoded_claims = token.split(".")[1]
+          encoded_claims += "=" * (-len(encoded_claims) % 4)
+          try:
+              claims = json.loads(base64.urlsafe_b64decode(encoded_claims))
+          except (ValueError, json.JSONDecodeError) as error:
+              raise SystemExit("GitHub OIDC claims are malformed") from error
+          job_workflow_ref = claims.get("job_workflow_ref")
+          if not isinstance(job_workflow_ref, str) or not job_workflow_ref.startswith(
+              expected_prefix
+          ):
+              raise SystemExit(
+                  "Reusable workflow identity does not match immutable package tooling"
+              )
+          tooling_sha = job_workflow_ref.removeprefix(expected_prefix)
+          if not re.fullmatch(r"[0-9a-f]{40}", tooling_sha, re.ASCII):
+              raise SystemExit(
+                  "Reusable workflow must be pinned to a full lowercase commit SHA"
+              )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="ascii") as output:
+              output.write(f"sha={tooling_sha}\n")
+          PY
+
+      - name: Check out exact caller revision
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: source
+          persist-credentials: false
+
+      - name: Check out immutable package tooling
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: Serph91P/repository.serph91p
+          ref: ${{ steps.tooling-ref.outputs.sha }}
+          path: tooling
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+
+      - name: Build deterministic package and evidence
+        id: build
+        env:
+          ADDON_ID: ${{ inputs.addon_id }}
+          RUNTIME_ENTRIES_JSON: ${{ inputs.runtime_entries_json }}
+          CANDIDATE_SHA: ${{ github.sha }}
+          VALIDATION_HEAD_SHA: ${{ github.sha }}
+          VALIDATION_RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tooling/addon-publication/build_package.py \
+            --source-dir source \
+            --output-dir artifacts \
+            --addon-id "${ADDON_ID}" \
+            --runtime-entries-json "${RUNTIME_ENTRIES_JSON}" \
+            --validation-run-id "${VALIDATION_RUN_ID}" \
+            --candidate-sha "${CANDIDATE_SHA}" \
+            --validation-head-sha "${VALIDATION_HEAD_SHA}" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Check extracted generated package with Kodi Add-on Checker
+        env:
+          ADDON_ID: ${{ inputs.addon_id }}
+          PACKAGE_PATH: ${{ steps.build.outputs.package_path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            --require-hashes --no-deps \
+            --requirement tooling/addon-publication/addon-check-requirements.txt
+          python -m pip install --disable-pip-version-check \
+            --no-deps --no-build-isolation \
+            'git+https://github.com/xbmc/addon-check.git@67be5c1eca23e01402a447f995e2216bd83202f3'
+          python - "${PACKAGE_PATH}" checker/extracted <<'PY'
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          package = Path(sys.argv[1])
+          destination = Path(sys.argv[2])
+          destination.mkdir(parents=True)
+          with zipfile.ZipFile(package, "r") as archive:
+              archive.extractall(destination)
+          PY
+          kodi-addon-checker "checker/extracted/${ADDON_ID}" --branch=omega
+
+      - name: Upload exact add-on package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: addon-package
+          path: artifacts/addon-package/${{ steps.build.outputs.asset_name }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload exact validation evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: validation-evidence
+          path: artifacts/validation-evidence/validation-evidence.json
+          if-no-files-found: error
+          retention-days: 30
