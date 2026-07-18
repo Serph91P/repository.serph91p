@@ -28,8 +28,7 @@ FIXTURE_ASSET = "plugin.video.twitch-3.1.8.zip"
 FIXTURE_PUBLICATION_ID = "plugin.video.twitch@3.1.8"
 FIXTURE_SOURCE_REPO = "Serph91P/plugin.video.twitch"
 FIXTURE_BRANCH = "develop"
-FIXTURE_WORKFLOW_PATH = ".github/workflows/addon-validations.yml@develop"
-FIXTURE_API_WORKFLOW_PATH = ".github/workflows/addon-validations.yml"
+FIXTURE_WORKFLOW_PATH = ".github/workflows/addon-validations.yml"
 FIXTURE_ARTIFACT_SHA256 = (
     "d83db0534b640f2283d9c7ded69d9f8406c274f13385cf045e2a77184058caaa"
 )
@@ -72,7 +71,7 @@ def _valid_run(**overrides):
         "head_sha": FIXTURE_SHA,
         "conclusion": "success",
         "name": "Add-on Validations",
-        "path": FIXTURE_API_WORKFLOW_PATH,
+        "path": FIXTURE_WORKFLOW_PATH,
         "head_branch": "develop",
         "status": "completed",
         "event": "push",
@@ -247,7 +246,7 @@ class TestValidateDispatchPayload(unittest.TestCase):
                 builder.validate_dispatch_payload(
                     _valid_dispatch(
                         validation_workflow_path=(
-                            ".github/workflows/untrusted.yml@develop"
+                            ".github/workflows/untrusted.yml"
                         )
                     )
                 )
@@ -517,7 +516,7 @@ class TestValidateGithubRun(unittest.TestCase):
             "branch": "main",
             "publication_branch": "develop",
             "validation_workflow": "Add-on Validations",
-            "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+            "validation_workflow_path": ".github/workflows/addon-validations.yml",
             "validation_workflow_id": 211623879,
             "package_artifact_name": "addon-package",
             "evidence_artifact_name": "validation-evidence",
@@ -553,10 +552,9 @@ class TestValidateGithubRun(unittest.TestCase):
     def test_wrong_workflow_path_is_rejected(self):
         with self.assertRaises(RuntimeError):
             self.validate(_valid_run(path=".github/workflows/untrusted.yml"))
-
     def test_suffixed_api_workflow_path_is_rejected(self):
         with self.assertRaises(RuntimeError):
-            self.validate(_valid_run(path=FIXTURE_WORKFLOW_PATH))
+            self.validate(_valid_run(path=f"{FIXTURE_WORKFLOW_PATH}@develop"))
 
     def test_missing_or_malformed_api_workflow_path_is_rejected(self):
         missing = _valid_run()
@@ -610,9 +608,12 @@ class TestValidateGithubRun(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.validate(run)
 
+    def test_workflow_dispatch_event_is_accepted(self):
+        self.validate(_valid_run(event="workflow_dispatch"))
+
     def test_wrong_event_is_rejected(self):
         with self.assertRaises(RuntimeError) as ctx:
-            self.validate(_valid_run(event="workflow_dispatch"))
+            self.validate(_valid_run(event="pull_request"))
         self.assertIn("event", str(ctx.exception))
 
     def test_wrong_repository_is_rejected(self):
@@ -961,7 +962,7 @@ class TestBuildImmutableRepository(unittest.TestCase):
         "publication_enabled": True,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 211623879,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -1004,7 +1005,7 @@ class TestBuildImmutableRepository(unittest.TestCase):
         cases.append(missing)
         cases.append(
             _valid_dispatch(
-                validation_workflow_path=".github/workflows/untrusted.yml@develop"
+                validation_workflow_path=".github/workflows/untrusted.yml"
             )
         )
         for payload in cases:
@@ -1451,7 +1452,7 @@ class TestBuildImmutableRepository(unittest.TestCase):
                         "id": FIXTURE_RUN_ID,
                         "head_sha": FIXTURE_SHA,
                         "name": "Add-on Validations",
-                        "path": FIXTURE_API_WORKFLOW_PATH,
+                        "path": FIXTURE_WORKFLOW_PATH,
                         "head_branch": FIXTURE_BRANCH,
                         "conclusion": "success",
                         "status": "completed",
@@ -2004,7 +2005,7 @@ class TestSourceTokenIsolation(unittest.TestCase):
         "publication_enabled": True,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 211623879,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
@@ -2636,7 +2637,7 @@ class TestTrustBoundaryBypassRegressions(unittest.TestCase):
                     _valid_dispatch(
                         validation_workflow="Add-on Validations",
                         validation_workflow_path=(
-                            ".github/workflows/untrusted.yml@develop"
+                            ".github/workflows/untrusted.yml"
                         ),
                     )
                 )
@@ -2708,7 +2709,7 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
             Path(__file__).parents[1] / "addon-workflow-templates/notify-repository.yml"
         ).read_text(encoding="utf-8")
 
-        self.assertIn(".github/workflows/addon-validations.yml@develop", workflow)
+        self.assertIn(".github/workflows/addon-validations.yml", workflow)
         self.assertNotIn("${{ github.event.workflow_run.path }}", workflow)
 
     def test_workflow_maps_source_artifact_token_separately(self):
@@ -2787,14 +2788,18 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
             with self.subTest(source=f"{config['owner']}/{config['repo']}"):
                 self.assertEqual(
                     config["validation_workflow_path"],
-                    ".github/workflows/addon-validations.yml@develop",
+                    ".github/workflows/addon-validations.yml",
                 )
                 self.assertEqual(config["publication_branch"], "develop")
                 self.assertEqual(config["package_artifact_name"], "addon-package")
                 self.assertEqual(
                     config["evidence_artifact_name"], "validation-evidence"
                 )
-                self.assertFalse(config["publication_enabled"])
+                expected_enabled = config["addon_id"] in {
+                    "plugin.video.plexkodiconnect.movies",
+                    "plugin.video.plexkodiconnect.tvshows",
+                }
+                self.assertEqual(config["publication_enabled"], expected_enabled)
 
 
 if __name__ == "__main__":

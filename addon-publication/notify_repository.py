@@ -19,6 +19,7 @@ from typing import NamedTuple
 
 GH_API = "https://api.github.com"
 TARGET_BRANCH = "develop"
+VALIDATION_EVENTS = frozenset({"push", "workflow_dispatch"})
 PACKAGE_ARTIFACT = "addon-package"
 EVIDENCE_ARTIFACT = "validation-evidence"
 EVIDENCE_FILENAME = "validation-evidence.json"
@@ -39,7 +40,7 @@ VERSION_RE = re.compile(
     re.ASCII,
 )
 WORKFLOW_PATH_RE = re.compile(
-    r"^\.github/workflows/[0-9A-Za-z_.-]+\.ya?ml@develop$", re.ASCII
+    r"^\.github/workflows/[0-9A-Za-z_.-]+\.ya?ml$", re.ASCII
 )
 INPUT_FIELDS = (
     "source_repository",
@@ -47,6 +48,7 @@ INPUT_FIELDS = (
     "validation_run_id",
     "validation_workflow",
     "validation_workflow_path",
+    "validation_event",
     "expected_branch",
     "addon_id",
     "addon_version",
@@ -134,9 +136,9 @@ def validate_inputs(values, actual_source_repository):
     if not isinstance(workflow_path, str) or not WORKFLOW_PATH_RE.fullmatch(
         workflow_path
     ):
-        raise NotificationError(
-            "validation workflow path must identify a develop workflow run"
-        )
+        raise NotificationError("validation workflow path must be a canonical API path")
+    if values["validation_event"] not in VALIDATION_EVENTS:
+        raise NotificationError("validation event must be push or workflow_dispatch")
     if values["expected_branch"] != TARGET_BRANCH:
         raise NotificationError("expected branch must be develop")
     addon_id = values["addon_id"]
@@ -157,7 +159,7 @@ def validate_inputs(values, actual_source_repository):
 
 
 def validate_run(run, values):
-    """Bind an exact completed successful push run to the notifier inputs."""
+    """Bind an exact completed successful approved run to notifier inputs."""
     if not isinstance(run, dict):
         raise NotificationError("validation run response must be an object")
     repository = run.get("repository")
@@ -171,7 +173,7 @@ def validate_run(run, values):
             "workflow path",
         ),
         (run.get("head_branch"), TARGET_BRANCH, "run branch"),
-        (run.get("event"), "push", "run event"),
+        (run.get("event"), values["validation_event"], "run event"),
         (run.get("status"), "completed", "run status"),
         (run.get("conclusion"), "success", "run conclusion"),
         (
@@ -553,6 +555,7 @@ def main(argv=None):
     parser.add_argument("--validation-run-id", required=True, type=int)
     parser.add_argument("--validation-workflow", required=True)
     parser.add_argument("--validation-workflow-path", required=True)
+    parser.add_argument("--validation-event", required=True)
     parser.add_argument("--expected-branch", required=True)
     parser.add_argument("--addon-id", required=True)
     parser.add_argument("--addon-version", required=True)
@@ -567,6 +570,7 @@ def main(argv=None):
         "validation_run_id": args.validation_run_id,
         "validation_workflow": args.validation_workflow,
         "validation_workflow_path": args.validation_workflow_path,
+        "validation_event": args.validation_event,
         "expected_branch": args.expected_branch,
         "addon_id": args.addon_id,
         "addon_version": args.addon_version,

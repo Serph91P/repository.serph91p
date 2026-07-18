@@ -32,7 +32,8 @@ def valid_inputs(**overrides):
         "candidate_sha": SHA,
         "validation_run_id": RUN_ID,
         "validation_workflow": "Add-on Validations",
-        "validation_workflow_path": ".github/workflows/addon-validations.yml@develop",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
+        "validation_event": "push",
         "expected_branch": "develop",
         "addon_id": ADDON_ID,
         "addon_version": VERSION,
@@ -49,7 +50,7 @@ def valid_run(**overrides):
         "id": RUN_ID,
         "head_sha": SHA,
         "name": "Add-on Validations",
-        "path": ".github/workflows/addon-validations.yml@develop",
+        "path": ".github/workflows/addon-validations.yml",
         "head_branch": "develop",
         "event": "push",
         "status": "completed",
@@ -136,7 +137,7 @@ class ValidateInputsTests(unittest.TestCase):
                 valid_inputs(validation_workflow=""),
                 valid_inputs(
                     validation_workflow_path=(
-                        ".github/workflows/addon-validations.yml@main"
+                        ".github/workflows/addon-validations.yml@develop"
                     )
                 ),
                 valid_inputs(expected_branch="main"),
@@ -157,14 +158,30 @@ class ValidateRunTests(unittest.TestCase):
     def test_successful_push_run_on_develop_passes(self):
         notifier.validate_run(valid_run(), valid_inputs())
 
+    def test_successful_workflow_dispatch_run_on_develop_passes(self):
+        notifier.validate_run(
+            valid_run(event="workflow_dispatch"),
+            valid_inputs(validation_event="workflow_dispatch"),
+        )
+
+    def test_validation_event_is_exact_and_allowlisted(self):
+        with self.assertRaises(notifier.NotificationError):
+            notifier.validate_inputs(
+                valid_inputs(validation_event="pull_request"), SOURCE
+            )
+        with self.assertRaises(notifier.NotificationError):
+            notifier.validate_run(
+                valid_run(event="workflow_dispatch"), valid_inputs()
+            )
+
     def test_identity_mismatches_fail_closed(self):
         cases = [
             valid_run(id=RUN_ID + 1),
             valid_run(head_sha="c" * 40),
             valid_run(name="Other"),
-            valid_run(path=".github/workflows/untrusted.yml@develop"),
+            valid_run(path=".github/workflows/untrusted.yml"),
             valid_run(head_branch="main"),
-            valid_run(event="workflow_dispatch"),
+            valid_run(event="pull_request"),
             valid_run(status="in_progress"),
             valid_run(conclusion="failure"),
             valid_run(repository={"full_name": "Other/repo"}),
