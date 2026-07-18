@@ -36,7 +36,7 @@ ADDONS = [
         "repo": "plugin.video.twitch",
         "addon_id": "plugin.video.twitch",
         "branch": "main",
-        "publication_enabled": False,
+        "publication_enabled": True,
         "publication_branch": "develop",
         "validation_workflow": "Add-on Validations",
         "validation_workflow_path": ".github/workflows/addon-validations.yml",

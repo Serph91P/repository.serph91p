@@ -360,7 +360,9 @@ class TestValidateDispatchPayload(unittest.TestCase):
 
     def test_disabled_source_is_rejected(self):
         with self.assertRaises(RuntimeError) as ctx:
-            builder.validate_dispatch_payload(_valid_dispatch())
+            builder.validate_dispatch_payload(
+                _valid_dispatch(source_repo="Serph91P/plugin.video.gronkhtv")
+            )
         self.assertIn("disabled", str(ctx.exception))
 
 
@@ -2796,6 +2798,7 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
                     config["evidence_artifact_name"], "validation-evidence"
                 )
                 expected_enabled = config["addon_id"] in {
+                    "plugin.video.twitch",
                     "plugin.video.plexkodiconnect.movies",
                     "plugin.video.plexkodiconnect.tvshows",
                 }
