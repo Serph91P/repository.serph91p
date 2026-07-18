@@ -54,4 +54,4 @@ jobs:
           token: ${{ secrets.REPO_DISPATCH_TOKEN }}
           repository: Serph91P/repository.serph91p
           event-type: validated-addon-publication
-          client-payload: '{"source_repo": "${{ github.repository }}", "candidate_sha": "${{ steps.evidence.outputs.head_sha }}", "validation_run_id": ${{ steps.evidence.outputs.run_id }}, "validation_head_sha": "${{ steps.evidence.outputs.head_sha }}", "validation_workflow": "Add-on Validations", "validation_workflow_path": "${{ github.event.workflow_run.path }}", "expected_branch": "${{ steps.evidence.outputs.head_branch }}"}'
+          client-payload: '{"source_repo": "${{ github.repository }}", "candidate_sha": "${{ steps.evidence.outputs.head_sha }}", "validation_run_id": ${{ steps.evidence.outputs.run_id }}, "validation_head_sha": "${{ steps.evidence.outputs.head_sha }}", "validation_workflow": "Add-on Validations", "validation_workflow_path": "${{ github.event.workflow_run.path }}@develop", "expected_branch": "${{ steps.evidence.outputs.head_branch }}"}'

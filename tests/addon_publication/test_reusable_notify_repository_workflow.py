@@ -6,7 +6,7 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW = ROOT / ".github" / "workflows" / "reusable-notify-repository.yml"
+NOTIFIER_TEMPLATE = ROOT / "addon-workflow-templates" / "notify-repository.yml"
 NOTIFIER_DOC = ROOT / "addon-publication" / "NOTIFIER.md"
 FULL_SHA_ACTION = re.compile(r"^[^\s@]+@[0-9a-f]{40}$")
 
@@ -14,7 +14,7 @@ FULL_SHA_ACTION = re.compile(r"^[^\s@]+@[0-9a-f]{40}$")
 class ReusableNotifierWorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.text = WORKFLOW.read_text(encoding="utf-8")
+        cls.text = (ROOT / ".github" / "workflows" / "reusable-notify-repository.yml").read_text(encoding="utf-8")
         cls.workflow = yaml.load(cls.text, Loader=yaml.BaseLoader)
 
     def test_yaml_parses_and_only_workflow_call_triggers(self):
@@ -149,14 +149,9 @@ class ReusableNotifierWorkflowTests(unittest.TestCase):
 
 class NotifyRepositoryWorkflowPayloadTests(unittest.TestCase):
     def test_validation_workflow_path_in_client_payload(self):
-        with WORKFLOW.open(encoding="utf-8") as f:
+        with NOTIFIER_TEMPLATE.open(encoding="utf-8") as f:
             text = f.read()
-        workflow = yaml.load(text, Loader=yaml.BaseLoader)
-        dispatch = (
-            workflow["jobs"]["notify-repository"]["steps"][1]["with"]["client-payload"]
-        )
-        self.assertIn("validation_workflow_path", dispatch)
-        self.assertEqual(dispatch["validation_workflow_path"], "${{ github.event.workflow_run.path }}")
+        self.assertIn('validation_workflow_path": "${{ github.event.workflow_run.path }}@develop"', text)
 
     def test_dispatch_payload_passes_validator(self):
         representative = {
