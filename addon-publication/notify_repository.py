@@ -278,8 +278,11 @@ def _validate_artifact(value, source_repository, run_id, now):
         ).replace(tzinfo=datetime.timezone.utc)
     except (TypeError, ValueError) as error:
         raise NotificationError("artifact retention timestamps are malformed") from error
-    if expires - created != ARTIFACT_RETENTION:
-        raise NotificationError("artifact retention must be exactly 30 days")
+    retention = expires - created
+    expected_retention = ARTIFACT_RETENTION
+    minimum_retention = expected_retention - datetime.timedelta(seconds=1)
+    if not minimum_retention <= retention <= expected_retention:
+        raise NotificationError("artifact retention is outside the accepted range")
     if now < created or now >= expires:
         raise NotificationError("artifact retention window is not currently live")
     if not isinstance(download_url, str):

@@ -400,6 +400,71 @@ class ArtifactPaginationTests(unittest.TestCase):
                     notifier.find_required_artifacts(fetch, SOURCE, RUN_ID, now=NOW)
 
 
+class ArtifactRetentionBoundaryTests(unittest.TestCase):
+    def test_retention_30_days_minus_1_second_is_accepted(self):
+        expires = (
+            datetime.datetime(2026, 7, 31, 12, 0, 0, tzinfo=datetime.timezone.utc)
+            - datetime.timedelta(seconds=1)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        page = {
+            "artifacts": [
+                artifact("validation-evidence", 1, expires_at=expires),
+                artifact("addon-package", 2),
+            ]
+        }
+        fetch, _ = self._fetcher([(page, {})])
+        notifier.find_required_artifacts(fetch, SOURCE, RUN_ID, now=NOW)
+
+    def test_retention_exactly_30_days_is_accepted(self):
+        page = {
+            "artifacts": [
+                artifact("validation-evidence", 1),
+                artifact("addon-package", 2),
+            ]
+        }
+        fetch, _ = self._fetcher([(page, {})])
+        notifier.find_required_artifacts(fetch, SOURCE, RUN_ID, now=NOW)
+
+    def test_retention_30_days_minus_2_seconds_is_rejected(self):
+        expires = (
+            datetime.datetime(2026, 7, 31, 12, 0, 0, tzinfo=datetime.timezone.utc)
+            - datetime.timedelta(seconds=2)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        page = {
+            "artifacts": [
+                artifact("validation-evidence", 1, expires_at=expires),
+                artifact("addon-package", 2),
+            ]
+        }
+        fetch, _ = self._fetcher([(page, {})])
+        with self.assertRaises(notifier.NotificationError):
+            notifier.find_required_artifacts(fetch, SOURCE, RUN_ID, now=NOW)
+
+    def test_retention_greater_than_30_days_is_rejected(self):
+        expires = (
+            datetime.datetime(2026, 7, 31, 12, 0, 0, tzinfo=datetime.timezone.utc)
+            + datetime.timedelta(seconds=1)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        page = {
+            "artifacts": [
+                artifact("validation-evidence", 1, expires_at=expires),
+                artifact("addon-package", 2),
+            ]
+        }
+        fetch, _ = self._fetcher([(page, {})])
+        with self.assertRaises(notifier.NotificationError):
+            notifier.find_required_artifacts(fetch, SOURCE, RUN_ID, now=NOW)
+
+    def _fetcher(self, pages):
+        calls = []
+
+        def fetch(url):
+            calls.append(url)
+            return pages[len(calls) - 1]
+
+        return fetch, calls
+
+
 class EvidenceTests(unittest.TestCase):
     def test_exact_evidence_and_optional_empty_tag_pass(self):
         for evidence in (valid_evidence(), valid_evidence(tag="")):
