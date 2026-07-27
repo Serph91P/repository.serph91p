@@ -280,7 +280,7 @@ def _validate_artifact(value, source_repository, run_id, now):
         raise NotificationError("artifact retention timestamps are malformed") from error
     retention = expires - created
     expected_retention = ARTIFACT_RETENTION
-    minimum_retention = expected_retention - datetime.timedelta(seconds=1)
+    minimum_retention = expected_retention - datetime.timedelta(seconds=2)
     if not minimum_retention <= retention <= expected_retention:
         raise NotificationError("artifact retention is outside the accepted range")
     if now < created or now >= expires:

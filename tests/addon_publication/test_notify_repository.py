@@ -425,10 +425,24 @@ class ArtifactRetentionBoundaryTests(unittest.TestCase):
         fetch, _ = self._fetcher([(page, {})])
         notifier.find_required_artifacts(fetch, SOURCE, RUN_ID, now=NOW)
 
-    def test_retention_30_days_minus_2_seconds_is_rejected(self):
+    def test_retention_30_days_minus_2_seconds_is_accepted(self):
         expires = (
             datetime.datetime(2026, 7, 31, 12, 0, 0, tzinfo=datetime.timezone.utc)
             - datetime.timedelta(seconds=2)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        page = {
+            "artifacts": [
+                artifact("validation-evidence", 1, expires_at=expires),
+                artifact("addon-package", 2),
+            ]
+        }
+        fetch, _ = self._fetcher([(page, {})])
+        notifier.find_required_artifacts(fetch, SOURCE, RUN_ID, now=NOW)
+
+    def test_retention_30_days_minus_3_seconds_is_rejected(self):
+        expires = (
+            datetime.datetime(2026, 7, 31, 12, 0, 0, tzinfo=datetime.timezone.utc)
+            - datetime.timedelta(seconds=3)
         ).strftime("%Y-%m-%dT%H:%M:%SZ")
         page = {
             "artifacts": [
