@@ -92,7 +92,8 @@ verifies that exact allowlisted event, branch, conclusion,
 workflow name, workflow path, run ID, source repository, and head SHA. It
 paginates all run artifacts, requires exactly one live `addon-package` artifact
 and one live `validation-evidence` artifact, and requires both metadata records
-to declare the producer's exact 30-day retention interval. It downloads and
+to declare an accepted retention interval of
+2,591,998 through 2,592,000 seconds, inclusive. It downloads and
 validates the single evidence JSON file, rejecting duplicate JSON member names,
 before downloading package bytes. Both wrappers use the source-read token while
 stripping authorization on cross-origin redirects. The package wrapper must
