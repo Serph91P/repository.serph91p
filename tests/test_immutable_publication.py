@@ -799,6 +799,14 @@ class TestFetchValidatedRunArtifacts(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "retention"):
             self.fetch_artifacts_with_expiration("2026-07-31T00:00:01Z")
 
+    def test_artifact_retention_contract_documents_exact_boundaries(self):
+        expected = "2,591,998 through 2,592,000 seconds, inclusive"
+        self.assertIn(expected, builder.fetch_validated_run_artifacts.__doc__)
+        notifier_doc = (
+            Path(__file__).parents[1] / "addon-publication/NOTIFIER.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn(expected, notifier_doc)
+
 
 class TestValidateArchiveTopology(unittest.TestCase):
     def test_valid_topology_passes(self):

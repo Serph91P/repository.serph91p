@@ -1122,8 +1122,9 @@ def fetch_validated_run_artifacts(source_repo, run_id, source_config, now=None):
     record, requires exactly two total artifacts (one package, one evidence),
     rejects unexpected names, duplicate required names (including on later
     pages), duplicate IDs, malformed fields, expired or not-currently-live
-    artifacts, and retention outside the one-second timestamp tolerance below
-    30 days. Does not download before the complete set is validated.
+    artifacts, and retention outside the accepted interval. Only
+    2,591,998 through 2,592,000 seconds, inclusive, are accepted. Does not
+    download before the complete set is validated.
     """
     if now is None:
         now = datetime.datetime.now(datetime.timezone.utc)
