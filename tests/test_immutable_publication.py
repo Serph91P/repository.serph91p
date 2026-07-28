@@ -755,7 +755,7 @@ class TestFetchValidatedRunArtifacts(unittest.TestCase):
             )
         self.assertEqual(len(calls), 2)
 
-    def test_artifact_retention_allows_one_second_timestamp_rounding(self):
+    def fetch_artifacts_with_expiration(self, expires_at):
         api_get, _calls = self.fetch(
             [
                 {
@@ -764,7 +764,7 @@ class TestFetchValidatedRunArtifacts(unittest.TestCase):
                         self.artifact(
                             "addon-package",
                             1,
-                            expires_at="2026-07-30T23:59:59Z",
+                            expires_at=expires_at,
                         ),
                         self.artifact("validation-evidence", 2),
                     ],
@@ -772,67 +772,32 @@ class TestFetchValidatedRunArtifacts(unittest.TestCase):
             ]
         )
         with mock.patch.object(builder, "source_github_api_get", side_effect=api_get):
-            selected = builder.fetch_validated_run_artifacts(
+            return builder.fetch_validated_run_artifacts(
                 FIXTURE_SOURCE_REPO,
                 FIXTURE_RUN_ID,
                 self.source_config,
                 now=datetime.datetime(2026, 7, 17, tzinfo=datetime.timezone.utc),
             )
+
+    def test_artifact_retention_rejects_2591997_seconds(self):
+        with self.assertRaisesRegex(RuntimeError, "retention"):
+            self.fetch_artifacts_with_expiration("2026-07-30T23:59:57Z")
+
+    def test_artifact_retention_accepts_2591998_seconds(self):
+        selected = self.fetch_artifacts_with_expiration("2026-07-30T23:59:58Z")
         self.assertEqual(set(selected), {"addon-package", "validation-evidence"})
 
-    def test_artifact_retention_rejects_two_seconds_short(self):
-        api_get, _calls = self.fetch(
-            [
-                {
-                    "total_count": 2,
-                    "artifacts": [
-                        self.artifact(
-                            "addon-package",
-                            1,
-                            expires_at="2026-07-30T23:59:58Z",
-                        ),
-                        self.artifact("validation-evidence", 2),
-                    ],
-                }
-            ]
-        )
-        with (
-            mock.patch.object(builder, "source_github_api_get", side_effect=api_get),
-            self.assertRaisesRegex(RuntimeError, "retention"),
-        ):
-            builder.fetch_validated_run_artifacts(
-                FIXTURE_SOURCE_REPO,
-                FIXTURE_RUN_ID,
-                self.source_config,
-                now=datetime.datetime(2026, 7, 17, tzinfo=datetime.timezone.utc),
-            )
+    def test_artifact_retention_accepts_2591999_seconds(self):
+        selected = self.fetch_artifacts_with_expiration("2026-07-30T23:59:59Z")
+        self.assertEqual(set(selected), {"addon-package", "validation-evidence"})
 
-    def test_artifact_retention_rejects_above_thirty_days(self):
-        api_get, _calls = self.fetch(
-            [
-                {
-                    "total_count": 2,
-                    "artifacts": [
-                        self.artifact(
-                            "addon-package",
-                            1,
-                            expires_at="2026-07-31T00:00:01Z",
-                        ),
-                        self.artifact("validation-evidence", 2),
-                    ],
-                }
-            ]
-        )
-        with (
-            mock.patch.object(builder, "source_github_api_get", side_effect=api_get),
-            self.assertRaisesRegex(RuntimeError, "retention"),
-        ):
-            builder.fetch_validated_run_artifacts(
-                FIXTURE_SOURCE_REPO,
-                FIXTURE_RUN_ID,
-                self.source_config,
-                now=datetime.datetime(2026, 7, 17, tzinfo=datetime.timezone.utc),
-            )
+    def test_artifact_retention_accepts_2592000_seconds(self):
+        selected = self.fetch_artifacts_with_expiration("2026-07-31T00:00:00Z")
+        self.assertEqual(set(selected), {"addon-package", "validation-evidence"})
+
+    def test_artifact_retention_rejects_2592001_seconds(self):
+        with self.assertRaisesRegex(RuntimeError, "retention"):
+            self.fetch_artifacts_with_expiration("2026-07-31T00:00:01Z")
 
 
 class TestValidateArchiveTopology(unittest.TestCase):
