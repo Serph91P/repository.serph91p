@@ -171,11 +171,10 @@ class NotifyRepositoryWorkflowPayloadTests(unittest.TestCase):
         self.assertNotIn("runs-on", job)
         self.assertNotIn("steps", job)
         self.assertTrue(FULL_SHA_ACTION.fullmatch(job["uses"]), job["uses"])
-        self.assertTrue(
-            job["uses"].startswith(
-                "Serph91P/repository.serph91p/.github/workflows/"
-                "reusable-notify-repository.yml@"
-            )
+        self.assertEqual(
+            job["uses"],
+            "Serph91P/repository.serph91p/.github/workflows/"
+            "reusable-notify-repository.yml@394c4ffcef574a602a7c640565b5d6f705e9a16d",
         )
         self.assertNotIn("repository-dispatch", self.text)
         self.assertNotRegex(self.text, r"uses:\s+[^\s]+@v\d+")
