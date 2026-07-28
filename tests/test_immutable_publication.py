@@ -359,10 +359,12 @@ class TestValidateDispatchPayload(unittest.TestCase):
                 builder.validate_dispatch_payload(payload)
 
     def test_disabled_source_is_rejected(self):
-        with self.assertRaises(RuntimeError) as ctx:
-            builder.validate_dispatch_payload(
-                _valid_dispatch(source_repo="Serph91P/plugin.video.gronkhtv")
-            )
+        config = self._enabled_addon()
+        config["publication_enabled"] = False
+        with mock.patch.object(builder, "ADDONS", [config]), self.assertRaises(
+            RuntimeError
+        ) as ctx:
+            builder.validate_dispatch_payload(_valid_dispatch())
         self.assertIn("disabled", str(ctx.exception))
 
 
@@ -2811,6 +2813,19 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
         self.assertNotIn("source_token", notify)
 
     def test_target_policy_is_bound_per_source_in_addons(self):
+        expected_sources = {
+            "Serph91P/plugin.video.gronkhtv",
+            "Serph91P/plugin.video.twitch",
+            "Serph91P/script.module.python.twitch",
+            "Serph91P/PlexKodiConnect",
+            "Serph91P/plugin.video.plexkodiconnect.movies",
+            "Serph91P/plugin.video.plexkodiconnect.tvshows",
+            "Serph91P/script.tubecast",
+        }
+        self.assertEqual(
+            {f"{config['owner']}/{config['repo']}" for config in builder.ADDONS},
+            expected_sources,
+        )
         for config in builder.ADDONS:
             with self.subTest(source=f"{config['owner']}/{config['repo']}"):
                 self.assertEqual(
@@ -2822,12 +2837,7 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
                 self.assertEqual(
                     config["evidence_artifact_name"], "validation-evidence"
                 )
-                expected_enabled = config["addon_id"] in {
-                    "plugin.video.twitch",
-                    "plugin.video.plexkodiconnect.movies",
-                    "plugin.video.plexkodiconnect.tvshows",
-                }
-                self.assertEqual(config["publication_enabled"], expected_enabled)
+                self.assertIs(config["publication_enabled"], True)
 
 
 if __name__ == "__main__":
