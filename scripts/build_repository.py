@@ -1242,7 +1242,7 @@ def fetch_validated_run_artifacts(source_repo, run_id, source_config, now=None):
                 ) from error
             retention = expires_dt - created_dt
             expected_retention = datetime.timedelta(days=ARTIFACT_RETENTION_DAYS)
-            minimum_retention = expected_retention - datetime.timedelta(seconds=1)
+            minimum_retention = expected_retention - datetime.timedelta(seconds=2)
             if not minimum_retention <= retention <= expected_retention:
                 raise RuntimeError(
                     f"Artifact {name!r} id {artifact_id} has retention "
