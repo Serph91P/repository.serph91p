@@ -102,6 +102,15 @@ def _zip_sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+class _UrlResponse(io.BytesIO):
+    def __init__(self, content, url):
+        super().__init__(content)
+        self._url = url
+
+    def geturl(self):
+        return self._url
+
+
 def _make_evidence_archive(evidence, dest):
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("validation-evidence.json", json.dumps(evidence, indent=2))
@@ -678,6 +687,96 @@ class TestKodiVersionComparator(unittest.TestCase):
                     self.parse(value)
 
 
+class TestCurrentPublicPackage(unittest.TestCase):
+    def test_download_uses_exact_pages_url_without_credentials(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            destination = Path(tmpdir) / "package.zip"
+            expected_url = (
+                "https://serph91p.github.io/repository.serph91p/"
+                "plugin.example/plugin.example-1.2.3.zip"
+            )
+            requests = []
+
+            def urlopen(request, **kwargs):
+                requests.append((request, kwargs))
+                return _UrlResponse(b"exact-public-bytes", expected_url)
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {"GITHUB_TOKEN": "target", "SOURCE_GITHUB_TOKEN": "source"},
+                ),
+                mock.patch("urllib.request.urlopen", side_effect=urlopen),
+            ):
+                filename = builder.download_current_package(
+                    "plugin.example", "1.2.3", destination
+                )
+
+            self.assertEqual(filename, "plugin.example-1.2.3.zip")
+            self.assertEqual(destination.read_bytes(), b"exact-public-bytes")
+            self.assertEqual(len(requests), 1)
+            request, kwargs = requests[0]
+            self.assertEqual(request.full_url, expected_url)
+            self.assertIsNone(request.get_header("Authorization"))
+            self.assertEqual(kwargs, {"timeout": 30})
+
+    def test_cross_origin_redirect_is_rejected_without_writing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            destination = Path(tmpdir) / "package.zip"
+            response = _UrlResponse(
+                b"attacker-bytes",
+                "https://attacker.invalid/plugin.example-1.2.3.zip",
+            )
+            with (
+                mock.patch("urllib.request.urlopen", return_value=response),
+                self.assertRaisesRegex(RuntimeError, "untrusted URL"),
+            ):
+                builder.download_current_package(
+                    "plugin.example", "1.2.3", destination
+                )
+            self.assertFalse(destination.exists())
+
+    def test_empty_and_oversized_downloads_are_rejected_without_writing(self):
+        expected_url = (
+            "https://serph91p.github.io/repository.serph91p/"
+            "plugin.example/plugin.example-1.2.3.zip"
+        )
+        for content in (b"", b"12345"):
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as tmpdir:
+                destination = Path(tmpdir) / "package.zip"
+                response = _UrlResponse(content, expected_url)
+                with (
+                    mock.patch.object(builder, "MAX_PUBLIC_PACKAGE_BYTES", 4),
+                    mock.patch("urllib.request.urlopen", return_value=response),
+                    self.assertRaisesRegex(RuntimeError, "empty or too large"),
+                ):
+                    builder.download_current_package(
+                        "plugin.example", "1.2.3", destination
+                    )
+                self.assertFalse(destination.exists())
+
+    def test_current_manifest_rejects_duplicate_and_malformed_entries(self):
+        manifests = (
+            (
+                "<addons>"
+                '<addon id="plugin.example" version="1.0.0"/>'
+                '<addon id="plugin.example" version="1.0.0"/>'
+                "</addons>"
+            ),
+            "<addons><unexpected/></addons>",
+            '<addons><addon id="plugin.example" version="bad-version"/></addons>',
+        )
+        for manifest in manifests:
+            with self.subTest(manifest=manifest), tempfile.TemporaryDirectory() as tmpdir:
+                root = Path(tmpdir)
+                (root / "repo").mkdir()
+                (root / "repo" / "addons.xml").write_text(
+                    manifest, encoding="utf-8"
+                )
+                with self.assertRaises(RuntimeError):
+                    builder._current_manifest_versions(root)
+
+
 class TestFetchValidatedRunArtifacts(unittest.TestCase):
     source_config = {
         "package_artifact_name": "addon-package",
@@ -892,6 +991,25 @@ class TestValidateArchiveTopology(unittest.TestCase):
                 archive.writestr("plugin.example/file.txt", b"data")
             with self.assertRaises(RuntimeError):
                 builder.validate_archive_topology(path, "plugin.example", "1.0.0")
+
+    def test_missing_local_asset_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "missing-asset.zip"
+            metadata = (
+                '<addon id="plugin.example" name="Test" version="1.0.0" '
+                'provider-name="Test"><extension point="xbmc.addon.metadata">'
+                "<assets><icon>resources/icon.png</icon></assets>"
+                "</extension></addon>"
+            )
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("plugin.example/addon.xml", metadata)
+            with self.assertRaisesRegex(RuntimeError, "missing local asset"):
+                builder.validate_archive_topology(
+                    path,
+                    "plugin.example",
+                    "1.0.0",
+                    ("addon.xml",),
+                )
 
     def test_embedded_id_mismatch_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1669,7 +1787,7 @@ class TestBuildImmutableRepository(unittest.TestCase):
             self.assertEqual(_snapshot_tree(existing_repo), repo_before)
             self.assertEqual(_snapshot_tree(existing_site), site_before)
 
-    def test_unrelated_reconciled_downgrade_is_rejected_before_promotion(self):
+    def test_unrelated_public_version_mismatch_is_rejected_before_promotion(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = _make_repo_root(tmpdir)
             existing_repo = root / "repo"
@@ -1704,19 +1822,21 @@ class TestBuildImmutableRepository(unittest.TestCase):
             other_filename = f"{other_id}-{other_version}.zip"
             other_zip = root / other_filename
             _make_addon_zip(other_zip, other_id, other_version)
-            other_url = f"https://example.invalid/{other_filename}"
             other_config = {
                 "owner": "Example",
                 "repo": other_id,
                 "addon_id": other_id,
                 "branch": "main",
+                "runtime_entries": ("addon.xml", "changelog.txt", "resources/"),
             }
 
             def download(url, destination):
-                if url == other_url:
-                    shutil.copy2(other_zip, destination)
-                else:
-                    candidate_download(url, destination)
+                candidate_download(url, destination)
+
+            def download_public(addon_id, version, destination):
+                self.assertEqual((addon_id, version), (other_id, "2.0.0"))
+                shutil.copy2(other_zip, destination)
+                return other_filename
 
             with (
                 mock.patch.dict(
@@ -1728,18 +1848,17 @@ class TestBuildImmutableRepository(unittest.TestCase):
                 mock.patch.object(
                     builder, "source_download_file", side_effect=download
                 ),
-                mock.patch.object(builder, "download_file", side_effect=download),
                 mock.patch.object(
                     builder,
-                    "get_latest_release_zip",
-                    return_value=(other_url, other_version, other_filename),
+                    "download_current_package",
+                    side_effect=download_public,
                 ),
                 mock.patch.object(
                     builder,
                     "ADDONS",
                     [self._target_addon_config, other_config],
                 ),
-                self.assertRaisesRegex(RuntimeError, "plugin.other"),
+                self.assertRaisesRegex(RuntimeError, "addon_version"),
             ):
                 builder.build_immutable_repository(_valid_dispatch(), root)
 
@@ -1965,6 +2084,235 @@ class TestBuildImmutableRepository(unittest.TestCase):
             self.assertTrue((site / "addons.xml").is_file())
             self.assertTrue((site / "index.html").is_file())
 
+    def test_unrelated_public_zip_bytes_are_preserved(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = _make_repo_root(tmpdir)
+            addon_zip = root / "addon.zip"
+            _make_addon_zip(addon_zip, FIXTURE_ADDON_ID, FIXTURE_VERSION)
+            evidence_archive = root / "evidence.zip"
+            package_archive = root / "package.zip"
+            evidence = _valid_evidence(artifact_sha256=_zip_sha256(addon_zip))
+            _make_evidence_archive(evidence, evidence_archive)
+            _make_package_archive(addon_zip, package_archive)
+            api_get, candidate_download = _make_mock_api_responses(
+                evidence_archive, package_archive
+            )
+
+            other_id = "plugin.other"
+            other_version = "1.0.0"
+            other_filename = f"{other_id}-{other_version}.zip"
+            public_zip = root / f"public-{other_filename}"
+            release_zip = root / f"release-{other_filename}"
+            _make_addon_zip(
+                public_zip,
+                other_id,
+                other_version,
+                extra_members={"resources/origin.txt": b"public-pages"},
+            )
+            _make_addon_zip(
+                release_zip,
+                other_id,
+                other_version,
+                extra_members={"resources/origin.txt": b"mutable-release"},
+            )
+            (root / "repo" / "addons.xml").write_text(
+                "<addons>"
+                f'<addon id="{FIXTURE_ADDON_ID}" version="{FIXTURE_VERSION}"/>'
+                f'<addon id="{other_id}" version="{other_version}"/>'
+                "</addons>",
+                encoding="utf-8",
+            )
+            release_url = f"https://example.invalid/{other_filename}"
+
+            def download(url, destination):
+                if url == release_url:
+                    shutil.copy2(release_zip, destination)
+                else:
+                    candidate_download(url, destination)
+
+            def download_public(addon_id, version, destination):
+                self.assertEqual((addon_id, version), (other_id, other_version))
+                shutil.copy2(public_zip, destination)
+                return other_filename
+
+            other_config = {
+                "owner": "Example",
+                "repo": other_id,
+                "addon_id": other_id,
+                "branch": "main",
+                "runtime_entries": ("addon.xml", "changelog.txt", "resources/"),
+            }
+            release_lookup = mock.Mock(
+                return_value=(release_url, other_version, other_filename)
+            )
+            source_rebuild = mock.Mock()
+            branch_archive = mock.Mock()
+            with (
+                mock.patch.dict(
+                    os.environ, {"SOURCE_GITHUB_TOKEN": "test-source-token"}
+                ),
+                mock.patch.object(
+                    builder, "source_github_api_get", side_effect=api_get
+                ),
+                mock.patch.object(
+                    builder, "source_download_file", side_effect=download
+                ),
+                mock.patch.object(
+                    builder, "download_current_package", side_effect=download_public
+                ),
+                mock.patch.object(builder, "get_latest_release_zip", release_lookup),
+                mock.patch.object(builder, "create_source_package", source_rebuild),
+                mock.patch.object(builder, "_source_archive_url", branch_archive),
+                mock.patch.object(
+                    builder, "ADDONS", [self._target_addon_config, other_config]
+                ),
+            ):
+                builder.build_immutable_repository(_valid_dispatch(), root)
+
+            published_zip = root / "repo" / other_id / other_filename
+            candidate_published = root / "repo" / FIXTURE_ADDON_ID / FIXTURE_ASSET
+            self.assertEqual(public_zip.read_bytes(), published_zip.read_bytes())
+            self.assertEqual(addon_zip.read_bytes(), candidate_published.read_bytes())
+            release_lookup.assert_not_called()
+            source_rebuild.assert_not_called()
+            branch_archive.assert_not_called()
+
+    def test_every_configured_unrelated_addon_is_required_in_current_manifest(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = _make_repo_root(tmpdir)
+            repo, site, _repo_before, site_before = self._add_existing_outputs(root)
+            repo_before = _snapshot_tree(repo)
+            addon_zip = root / "addon.zip"
+            _make_addon_zip(addon_zip, FIXTURE_ADDON_ID, FIXTURE_VERSION)
+            evidence_archive = root / "evidence.zip"
+            package_archive = root / "package.zip"
+            evidence = _valid_evidence(artifact_sha256=_zip_sha256(addon_zip))
+            _make_evidence_archive(evidence, evidence_archive)
+            _make_package_archive(addon_zip, package_archive)
+            api_get, download = _make_mock_api_responses(
+                evidence_archive, package_archive
+            )
+            other_config = {
+                "owner": "Example",
+                "repo": "plugin.other",
+                "addon_id": "plugin.other",
+                "branch": "main",
+                "runtime_entries": ("addon.xml", "changelog.txt", "resources/"),
+            }
+            public_download = mock.Mock()
+            release_lookup = mock.Mock()
+
+            with (
+                mock.patch.dict(
+                    os.environ, {"SOURCE_GITHUB_TOKEN": "test-source-token"}
+                ),
+                mock.patch.object(
+                    builder, "source_github_api_get", side_effect=api_get
+                ),
+                mock.patch.object(
+                    builder, "source_download_file", side_effect=download
+                ),
+                mock.patch.object(
+                    builder, "download_current_package", public_download
+                ),
+                mock.patch.object(builder, "get_latest_release_zip", release_lookup),
+                mock.patch.object(
+                    builder, "ADDONS", [self._target_addon_config, other_config]
+                ),
+                self.assertRaisesRegex(RuntimeError, "missing configured add-on"),
+            ):
+                builder.build_immutable_repository(_valid_dispatch(), root)
+
+            public_download.assert_not_called()
+            release_lookup.assert_not_called()
+            self.assertEqual(_snapshot_tree(repo), repo_before)
+            self.assertEqual(_snapshot_tree(site), site_before)
+
+    def test_wrong_public_identity_version_and_topology_preserve_outputs(self):
+        other_id = "plugin.other"
+        other_version = "1.0.0"
+        cases = (
+            ("id", "plugin.wrong", other_version, None),
+            ("version", other_id, "2.0.0", None),
+            ("topology", other_id, other_version, {"undeclared.py": b"bad"}),
+        )
+        for name, embedded_id, embedded_version, extra_members in cases:
+            with self.subTest(case=name), tempfile.TemporaryDirectory() as tmpdir:
+                root = _make_repo_root(tmpdir)
+                repo, site, _repo_before, _site_before = self._add_existing_outputs(
+                    root
+                )
+                (repo / "addons.xml").write_text(
+                    "<addons>"
+                    f'<addon id="{FIXTURE_ADDON_ID}" version="{FIXTURE_VERSION}"/>'
+                    f'<addon id="{other_id}" version="{other_version}"/>'
+                    "</addons>",
+                    encoding="utf-8",
+                )
+                repo_before = _snapshot_tree(repo)
+                site_before = _snapshot_tree(site)
+
+                addon_zip = root / "addon.zip"
+                _make_addon_zip(addon_zip, FIXTURE_ADDON_ID, FIXTURE_VERSION)
+                evidence_archive = root / "evidence.zip"
+                package_archive = root / "package.zip"
+                evidence = _valid_evidence(artifact_sha256=_zip_sha256(addon_zip))
+                _make_evidence_archive(evidence, evidence_archive)
+                _make_package_archive(addon_zip, package_archive)
+                api_get, download = _make_mock_api_responses(
+                    evidence_archive, package_archive
+                )
+                public_zip = root / "public.zip"
+                _make_addon_zip(
+                    public_zip,
+                    embedded_id,
+                    embedded_version,
+                    extra_members=extra_members,
+                )
+
+                def download_public(_addon_id, _version, destination):
+                    shutil.copy2(public_zip, destination)
+                    return f"{other_id}-{other_version}.zip"
+
+                other_config = {
+                    "owner": "Example",
+                    "repo": other_id,
+                    "addon_id": other_id,
+                    "branch": "main",
+                    "runtime_entries": (
+                        "addon.xml",
+                        "changelog.txt",
+                        "resources/",
+                    ),
+                }
+                with (
+                    mock.patch.dict(
+                        os.environ, {"SOURCE_GITHUB_TOKEN": "test-source-token"}
+                    ),
+                    mock.patch.object(
+                        builder, "source_github_api_get", side_effect=api_get
+                    ),
+                    mock.patch.object(
+                        builder, "source_download_file", side_effect=download
+                    ),
+                    mock.patch.object(
+                        builder,
+                        "download_current_package",
+                        side_effect=download_public,
+                    ),
+                    mock.patch.object(
+                        builder,
+                        "ADDONS",
+                        [self._target_addon_config, other_config],
+                    ),
+                    self.assertRaises(RuntimeError),
+                ):
+                    builder.build_immutable_repository(_valid_dispatch(), root)
+
+                self.assertEqual(_snapshot_tree(repo), repo_before)
+                self.assertEqual(_snapshot_tree(site), site_before)
+                self.assertFalse((root / "_staging").exists())
+
     def test_no_staging_left_after_success(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = _make_repo_root(tmpdir)
@@ -2073,7 +2421,7 @@ class TestSourceTokenIsolation(unittest.TestCase):
                 builder.build_immutable_repository(_valid_dispatch(), root)
             self.assertIn("SOURCE_GITHUB_TOKEN", str(ctx.exception))
 
-    def test_every_source_and_reconciliation_boundary_uses_only_source_token(self):
+    def test_source_artifacts_use_source_token_and_public_zip_is_unauthenticated(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = _make_repo_root(tmpdir)
             addon_zip = root / "addon.zip"
@@ -2100,10 +2448,17 @@ class TestSourceTokenIsolation(unittest.TestCase):
             other_filename = f"{other_id}-{other_version}.zip"
             other_zip = root / other_filename
             _make_addon_zip(other_zip, other_id, other_version)
-            latest_release_url = (
-                f"{builder.GH_API}/repos/Example/{other_id}/releases/latest"
+            public_url = (
+                "https://serph91p.github.io/repository.serph91p/"
+                f"{other_id}/{other_filename}"
             )
-            other_url = f"https://example.invalid/{other_filename}"
+            (root / "repo" / "addons.xml").write_text(
+                "<addons>"
+                f'<addon id="{FIXTURE_ADDON_ID}" version="{FIXTURE_VERSION}"/>'
+                f'<addon id="{other_id}" version="{other_version}"/>'
+                "</addons>",
+                encoding="utf-8",
+            )
             artifacts_payload = {
                 "total_count": 2,
                 "artifacts": [
@@ -2133,23 +2488,12 @@ class TestSourceTokenIsolation(unittest.TestCase):
                 artifacts_base: json.dumps(artifacts_payload).encode(),
                 evidence_url: evidence_archive.read_bytes(),
                 package_url: package_archive.read_bytes(),
-                latest_release_url: json.dumps(
-                    {
-                        "tag_name": f"v{other_version}",
-                        "assets": [
-                            {
-                                "name": other_filename,
-                                "browser_download_url": other_url,
-                            }
-                        ],
-                    }
-                ).encode(),
-                other_url: other_zip.read_bytes(),
+                public_url: other_zip.read_bytes(),
             }
             captured_api_requests = []
             captured_download_requests = []
 
-            def api_urlopen(request):
+            def api_urlopen(request, **_kwargs):
                 captured_api_requests.append(
                     (request.full_url, request.get_header("Authorization"))
                 )
@@ -2157,14 +2501,14 @@ class TestSourceTokenIsolation(unittest.TestCase):
                     if request.full_url == key or request.full_url.startswith(
                         key + "?"
                     ):
-                        return io.BytesIO(value)
+                        return _UrlResponse(value, request.full_url)
                 raise RuntimeError(f"Unexpected URL: {request.full_url}")
 
             def download_urlopen(request):
                 captured_download_requests.append(
                     (request.full_url, request.get_header("Authorization"))
                 )
-                return io.BytesIO(responses[request.full_url])
+                return _UrlResponse(responses[request.full_url], request.full_url)
 
             with (
                 mock.patch.dict(
@@ -2189,6 +2533,11 @@ class TestSourceTokenIsolation(unittest.TestCase):
                             "repo": other_id,
                             "addon_id": other_id,
                             "branch": "main",
+                            "runtime_entries": (
+                                "addon.xml",
+                                "changelog.txt",
+                                "resources/",
+                            ),
                         },
                     ],
                 ),
@@ -2201,7 +2550,7 @@ class TestSourceTokenIsolation(unittest.TestCase):
                     (run_url, "token source-tok-abc"),
                     (ref_url, "token source-tok-abc"),
                     (f"{artifacts_base}?per_page=100&page=1", "token source-tok-abc"),
-                    (latest_release_url, "token source-tok-abc"),
+                    (public_url, None),
                     (ref_url, "token source-tok-abc"),
                 ],
             )
@@ -2210,7 +2559,6 @@ class TestSourceTokenIsolation(unittest.TestCase):
                 [
                     (evidence_url, "token source-tok-abc"),
                     (package_url, "token source-tok-abc"),
-                    (other_url, "token source-tok-abc"),
                 ],
             )
             all_requests = captured_api_requests + captured_download_requests
@@ -2289,7 +2637,7 @@ class TestSourceTokenIsolation(unittest.TestCase):
 
             target_api_mock.assert_not_called()
 
-    def test_source_token_is_used_for_unrelated_source_reads(self):
+    def test_unrelated_public_read_avoids_source_reconciliation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = _make_repo_root(tmpdir)
             addon_zip = root / "addon.zip"
@@ -2305,16 +2653,22 @@ class TestSourceTokenIsolation(unittest.TestCase):
             other_filename = f"{other_addon_id}-{other_version}.zip"
             other_archive = root / other_filename
             _make_addon_zip(other_archive, other_addon_id, other_version)
-            other_url = f"https://example.invalid/{other_filename}"
+            (root / "repo" / "addons.xml").write_text(
+                "<addons>"
+                f'<addon id="{FIXTURE_ADDON_ID}" version="{FIXTURE_VERSION}"/>'
+                f'<addon id="{other_addon_id}" version="{other_version}"/>'
+                "</addons>",
+                encoding="utf-8",
+            )
 
             api_get, _download = _make_mock_api_responses(
                 evidence_archive, package_archive
             )
             source_download_urls = []
             generic_download_urls = []
-            release_lookup = mock.MagicMock(
-                return_value=(other_url, other_version, other_filename)
-            )
+            public_downloads = []
+            release_lookup = mock.MagicMock()
+            source_rebuild = mock.MagicMock()
             source_api = mock.MagicMock(side_effect=api_get)
 
             def source_download(url, dest):
@@ -2323,8 +2677,11 @@ class TestSourceTokenIsolation(unittest.TestCase):
                     shutil.copy2(evidence_archive, dest)
                 elif "package" in url:
                     shutil.copy2(package_archive, dest)
-                else:
-                    shutil.copy2(other_archive, dest)
+
+            def public_download(addon_id, version, destination):
+                public_downloads.append((addon_id, version))
+                shutil.copy2(other_archive, destination)
+                return other_filename
 
             def generic_download(url, dest):
                 generic_download_urls.append(url)
@@ -2337,6 +2694,11 @@ class TestSourceTokenIsolation(unittest.TestCase):
                     "repo": other_addon_id,
                     "addon_id": other_addon_id,
                     "branch": "main",
+                    "runtime_entries": (
+                        "addon.xml",
+                        "changelog.txt",
+                        "resources/",
+                    ),
                 },
             ]
             with (
@@ -2351,10 +2713,14 @@ class TestSourceTokenIsolation(unittest.TestCase):
                     builder, "download_file", side_effect=generic_download
                 ),
                 mock.patch.object(
+                    builder, "download_current_package", side_effect=public_download
+                ),
+                mock.patch.object(
                     builder,
                     "get_latest_release_zip",
                     release_lookup,
                 ),
+                mock.patch.object(builder, "create_source_package", source_rebuild),
                 mock.patch.object(builder, "ADDONS", addons),
             ):
                 builder.build_immutable_repository(_valid_dispatch(), root)
@@ -2364,16 +2730,12 @@ class TestSourceTokenIsolation(unittest.TestCase):
                 [
                     "https://example.invalid/evidence.zip",
                     "https://example.invalid/package.zip",
-                    other_url,
                 ],
             )
             self.assertEqual(generic_download_urls, [])
-            release_lookup.assert_called_once_with(
-                "Example",
-                other_addon_id,
-                other_addon_id,
-                api_get=source_api,
-            )
+            self.assertEqual(public_downloads, [(other_addon_id, other_version)])
+            release_lookup.assert_not_called()
+            source_rebuild.assert_not_called()
 
     def test_source_token_401_fails_closed_with_sanitized_error(self):
         with tempfile.TemporaryDirectory() as tmpdir:
