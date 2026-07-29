@@ -255,6 +255,9 @@ TEMP_DIR = REPO_ROOT / "_temp"
 GH_API = "https://api.github.com"
 CURRENT_MANIFEST_URL = "https://serph91p.github.io/repository.serph91p/addons.xml"
 MAX_MANIFEST_BYTES = 5 * 1024 * 1024
+PAGES_ORIGIN = "https://serph91p.github.io"
+PAGES_REPOSITORY_PATH = "/repository.serph91p"
+MAX_PUBLIC_PACKAGE_BYTES = 500 * 1024 * 1024
 NO_RELEASE = object()
 
 
@@ -311,6 +314,78 @@ def download_current_manifest(repo_root=None):
     temporary.write_bytes(content)
     os.replace(temporary, destination)
     print(f"Downloaded current repository manifest: {destination}")
+
+
+def _current_manifest_versions(repo_root):
+    """Return the unique add-on versions in the validated current manifest."""
+    manifest_path = repo_root / "repo" / "addons.xml"
+    try:
+        root = ET.parse(manifest_path).getroot()
+    except (OSError, ET.ParseError) as error:
+        raise RuntimeError(
+            f"Cannot parse current repository manifest {manifest_path}: {error}"
+        ) from error
+    if root.tag != "addons":
+        raise RuntimeError(
+            f"Current repository manifest {manifest_path} has unexpected root "
+            f"{root.tag!r}"
+        )
+    versions = {}
+    for addon in root:
+        if addon.tag != "addon":
+            raise RuntimeError(
+                f"Current repository manifest {manifest_path} has unexpected "
+                f"element {addon.tag!r}"
+            )
+        addon_id = addon.get("id")
+        version = addon.get("version")
+        if not addon_id or addon_id in versions:
+            raise RuntimeError(
+                f"Current repository manifest has missing or duplicate add-on ID "
+                f"{addon_id!r}"
+            )
+        _validated_filename_component(addon_id, "current manifest add-on ID")
+        _parse_kodi_version(version)
+        versions[addon_id] = version
+    return versions
+
+
+def download_current_package(addon_id, version, destination):
+    """Download one manifest-bound package from the fixed public Pages origin."""
+    _validated_filename_component(addon_id, "addon ID")
+    _validated_filename_component(version, "addon version")
+    _parse_kodi_version(version)
+    filename = f"{addon_id}-{version}.zip"
+    path = (
+        f"{PAGES_REPOSITORY_PATH}/{quote(addon_id, safe='')}/"
+        f"{quote(filename, safe='')}"
+    )
+    url = f"{PAGES_ORIGIN}{path}"
+    request = urllib.request.Request(url, headers={"Accept": "application/zip"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        response_url = response.geturl()
+        final_url = urlsplit(response_url)
+        if (
+            final_url.scheme != "https"
+            or final_url.hostname != "serph91p.github.io"
+            or final_url.port not in (None, 443)
+            or final_url.username is not None
+            or final_url.password is not None
+            or final_url.path != path
+            or final_url.query
+            or final_url.fragment
+        ):
+            raise RuntimeError(
+                f"Current public package redirected to untrusted URL "
+                f"{response_url!r}"
+            )
+        content = response.read(MAX_PUBLIC_PACKAGE_BYTES + 1)
+    if not content or len(content) > MAX_PUBLIC_PACKAGE_BYTES:
+        raise RuntimeError(
+            f"Current public package for {addon_id} is empty or too large"
+        )
+    destination.write_bytes(content)
+    return filename
 
 
 def github_api_get(url):
@@ -1364,6 +1439,7 @@ def validate_archive_topology(zip_path, addon_id, addon_version, runtime_entries
         with zipfile.ZipFile(zip_path, "r") as archive:
             addon_xml_path = None
             canonical_names = set()
+            members = {}
             for info in archive.infolist():
                 name = info.filename
                 relative_name = (
@@ -1384,6 +1460,7 @@ def validate_archive_topology(zip_path, addon_id, addon_version, runtime_entries
                 if canonical_name in canonical_names:
                     raise RuntimeError(f"Duplicate archive member: {name!r}")
                 canonical_names.add(canonical_name)
+                members[relative_name] = info
                 if not info.is_dir() and info.compress_type != zipfile.ZIP_DEFLATED:
                     raise RuntimeError(
                         f"Archive member {name!r} uses compression type "
@@ -1415,6 +1492,14 @@ def validate_archive_topology(zip_path, addon_id, addon_version, runtime_entries
                 validate_runtime_allowlist(
                     archive.infolist(), addon_id, runtime_entries
                 )
+            for relative_asset in _local_asset_paths(addon):
+                member_name = f"{addon_id}/{relative_asset.as_posix()}"
+                info = members.get(member_name)
+                if info is None or info.is_dir():
+                    raise RuntimeError(
+                        f"Package is missing local asset "
+                        f"{relative_asset.as_posix()!r}"
+                    )
             for info in archive.infolist():
                 if not info.is_dir():
                     archive.read(info)
@@ -1617,6 +1702,7 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
             source_config["runtime_entries"],
         )
 
+        current_versions = _current_manifest_versions(repo_root)
         published = []
         try:
             addon = publish_validated_addon(addon_zip_path, asset_name, staging_repo)
@@ -1626,47 +1712,30 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
             for config in ADDONS:
                 if config["addon_id"] == addon_id:
                     continue
-                owner = config["owner"]
-                repo = config["repo"]
                 other_addon_id = config["addon_id"]
-                print(f"\nProcessing: {other_addon_id} ({owner}/{repo})")
-                release = get_latest_release_zip(
-                    owner,
-                    repo,
-                    other_addon_id,
-                    api_get=source_github_api_get,
-                )
+                print(f"\nPreserving current public package: {other_addon_id}")
+                if other_addon_id not in current_versions:
+                    raise RuntimeError(
+                        f"Current repository manifest is missing configured add-on "
+                        f"{other_addon_id!r}"
+                    )
+                version = current_versions[other_addon_id]
+                filename = f"{other_addon_id}-{version}.zip"
                 other_download_dir = temp_dir / other_addon_id
                 other_download_dir.mkdir(parents=True)
-                if release is NO_RELEASE:
-                    branch = config["branch"]
-                    print(f"  No release found, building from source ({branch} branch)")
-                    source_zip = other_download_dir / "source.zip"
-                    source_download_file(
-                        _source_archive_url(owner, repo, branch), source_zip
-                    )
-                    zip_path, version, filename = create_source_package(
-                        source_zip,
-                        other_addon_id,
-                        other_download_dir,
-                        config["runtime_entries"],
-                    )
-                else:
-                    release_url, version, filename = release
-                    print(f"  Found release: v{version} ({filename})")
-                    zip_path = other_download_dir / filename
-                    source_download_file(release_url, zip_path)
+                zip_path = other_download_dir / filename
+                download_current_package(other_addon_id, version, zip_path)
                 _check_version_monotonicity(repo_root, other_addon_id, version)
-                published.append(
-                    publish_release_zip(
-                        zip_path,
-                        other_addon_id,
-                        version,
-                        filename,
-                        staging_repo,
-                    )
+                validate_archive_topology(
+                    zip_path,
+                    other_addon_id,
+                    version,
+                    config["runtime_entries"],
                 )
-                print(f"  OK: v{version}")
+                published.append(
+                    publish_validated_addon(zip_path, filename, staging_repo)
+                )
+                print(f"  Preserved: v{version}")
 
             print(f"\nProcessing: {REPO_ADDON_ID} (self)")
             package_path, version = _create_repository_package_in(repo_root, temp_dir)
