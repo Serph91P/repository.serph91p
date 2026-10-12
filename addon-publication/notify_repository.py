@@ -18,7 +18,8 @@ from typing import NamedTuple
 
 
 GH_API = "https://api.github.com"
-TARGET_BRANCH = "develop"
+SOURCE_BRANCHES = {"Serph91P/plugin.video.gronkhtv": "main"}
+DEFAULT_TARGET_BRANCH = "develop"
 VALIDATION_EVENTS = frozenset({"push", "workflow_dispatch"})
 PACKAGE_ARTIFACT = "addon-package"
 EVIDENCE_ARTIFACT = "validation-evidence"
@@ -139,8 +140,11 @@ def validate_inputs(values, actual_source_repository):
         raise NotificationError("validation workflow path must be a canonical API path")
     if values["validation_event"] not in VALIDATION_EVENTS:
         raise NotificationError("validation event must be push or workflow_dispatch")
-    if values["expected_branch"] != TARGET_BRANCH:
-        raise NotificationError("expected branch must be develop")
+    expected_branch = SOURCE_BRANCHES.get(source, DEFAULT_TARGET_BRANCH)
+    if values["expected_branch"] != expected_branch:
+        raise NotificationError(
+            f"expected branch must be {expected_branch} for {source}"
+        )
     addon_id = values["addon_id"]
     if not isinstance(addon_id, str) or not ADDON_ID_RE.fullmatch(addon_id):
         raise NotificationError("configured add-on ID is invalid")
@@ -172,7 +176,7 @@ def validate_run(run, values):
             values["validation_workflow_path"],
             "workflow path",
         ),
-        (run.get("head_branch"), TARGET_BRANCH, "run branch"),
+        (run.get("head_branch"), values["expected_branch"], "run branch"),
         (run.get("event"), values["validation_event"], "run event"),
         (run.get("status"), "completed", "run status"),
         (run.get("conclusion"), "success", "run conclusion"),
@@ -460,7 +464,7 @@ def build_dispatch_payload(values):
         "validation_head_sha": values["candidate_sha"],
         "validation_workflow": values["validation_workflow"],
         "validation_workflow_path": values["validation_workflow_path"],
-        "expected_branch": TARGET_BRANCH,
+        "expected_branch": values["expected_branch"],
         "publication_id": values["publication_id"],
     }
     if tuple(payload) != DISPATCH_FIELDS:

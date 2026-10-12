@@ -28,7 +28,7 @@ on:
         required: true
         type: string
       expected_branch:
-        description: Exact validated publication branch, which must be develop.
+        description: Exact validated publication branch allowed for the source repository.
         required: true
         type: string
       addon_id:

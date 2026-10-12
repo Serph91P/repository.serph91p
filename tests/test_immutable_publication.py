@@ -3194,7 +3194,10 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
                     config["validation_workflow_path"],
                     ".github/workflows/addon-validations.yml",
                 )
-                self.assertEqual(config["publication_branch"], "develop")
+                expected_branch = (
+                    "main" if config["addon_id"] == "plugin.video.gronkhtv" else "develop"
+                )
+                self.assertEqual(config["publication_branch"], expected_branch)
                 self.assertEqual(config["package_artifact_name"], "addon-package")
                 self.assertEqual(
                     config["evidence_artifact_name"], "validation-evidence"
