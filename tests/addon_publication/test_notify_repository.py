@@ -155,6 +155,22 @@ class ValidateInputsTests(unittest.TestCase):
 
 
 class ValidateRunTests(unittest.TestCase):
+    def test_gronkhtv_main_dispatch_is_allowed_by_source_specific_policy(self):
+        values = valid_inputs(
+            source_repository="Serph91P/plugin.video.gronkhtv",
+            expected_branch="main",
+            validation_event="workflow_dispatch",
+        )
+        notifier.validate_inputs(values, "Serph91P/plugin.video.gronkhtv")
+        notifier.validate_run(
+            valid_run(
+                head_branch="main",
+                event="workflow_dispatch",
+                repository={"full_name": "Serph91P/plugin.video.gronkhtv"},
+            ),
+            values,
+        )
+
     def test_successful_push_run_on_develop_passes(self):
         notifier.validate_run(valid_run(), valid_inputs())
 

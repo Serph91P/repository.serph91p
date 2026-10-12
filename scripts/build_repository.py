@@ -23,7 +23,7 @@ ADDONS = [
         "addon_id": "plugin.video.gronkhtv",
         "branch": "main",
         "publication_enabled": True,
-        "publication_branch": "develop",
+        "publication_branch": "main",
         "validation_workflow": "Add-on Validations",
         "validation_workflow_path": ".github/workflows/addon-validations.yml",
         "validation_workflow_id": 234989014,
