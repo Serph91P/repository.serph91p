@@ -33,6 +33,10 @@ Alle Addons werden automatisch aktualisiert wenn:
 - Die GitHub Actions Pipeline automatisch eine neue Version baut
 - Kodi erkennt das Update und installiert es automatisch
 
+## Arctic setup wizard candidate
+
+`script.serph91p.setup/` contains a **Kodi 21 development candidate**, not an add-on published in the repository yet. See its [scope, prerequisites, safety model and build instructions](script.serph91p.setup/README.md). It provides a curated portable Arctic layout and guided dependency/sign-in entry points, not a one-click personal setup. External repository bootstrap, immutable publication integration and fresh-device validation remain open in [issue #41](https://github.com/Serph91P/repository.serph91p/issues/41).
+
 ## Fuer Entwickler
 
 Die Repository-Aktualiserung erfolgt automatisch ueber `repository_dispatch` Events von den einzelnen Addon-Repos.
