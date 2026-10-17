@@ -1,42 +1,56 @@
-# Serph91P Arctic Setup Wizard
+# Serph91P Kodi Setup Wizard
 
-**Local development candidate for Kodi 21/Omega. Not published or device-approved.**
+**Version 0.2.0: local Kodi 21/Omega candidate, not a repository release or device-approved setup.**
 
-## What this candidate does
+## Skin choice and actual layout coverage
 
-The German wizard exposes separate actions to check/install the required add-ons through Kodi's configured repositories, apply a curated portable Arctic Fuse 3 layout, open service sign-in/settings entry points, show status, and restore a layout backup. Each install/enable and each layout write requires confirmation. Installation waits are bounded and verify enabled state plus minimum version, rather than merely the add-on's presence.
+The wizard asks for one of three profiles:
 
-The layout provides movie, series, Twitch and YouTube hubs, local-library movie/episode widgets, and safe add-on-root shortcuts. It deliberately does not copy a personal Kodi backup, hardcode Emby library-node names, or promise authenticated recommendations/followed-channel widgets before sign-in. Movies and series require a local library populated by the user's own Emby sync. This is not a byte-for-byte personal layout export.
+- **Schön: Arctic Fuse 3.** Curated movie/series/Twitch/YouTube hubs and local-library widgets. Existing Arctic settings outside the curated set are preserved.
+- **Schnell: Amber.** An Amber-specific Skin Shortcuts menu with Live TV, EPG, YouTube, movies, series, Twitch, Gronkh.tv, resume and recently-added views. It is not the same visual widget layout as Arctic. The target is `addon_data/script.skinshortcuts/skin.amber-mainmenu.DATA.xml`, not a shared menu: Amber's verified `doNotShareMenu` override requires the skin prefix.
+- **Touch: Estuary with touchmode.** Kodi's bundled skin exposes an actual touchmode setting. Activation is confirmation-gated, records the previous false state locally before the native runtime change, waits for the builtin to execute and reads its result back. Existing true state is a no-op. Restore uses the same supported runtime API. The native touch home screen is not rewritten or misrepresented as an Arctic clone.
 
-The wizard never copies accounts, passwords, cookies, OAuth tokens, databases, sources.xml, guisettings.xml, or device paths. It does not fetch arbitrary ZIP URLs, extract add-ons itself, modify Kodi's add-on database, switch/reload skins or restart Kodi. Account and library choices remain on the target device.
+All skins have the same fixed **Inhalte öffnen** destinations in the wizard. Amber uses these destinations in its main menu too. Local-library resume views depend on the device's own Emby sync and resume data; they are not a personal server-side resume/recommendation export. Touch keeps its native layout, so not every common destination is an extra top-level home tile.
 
-## Prerequisites and limits
+### Why not Estouchy by default?
 
-- Kodi 21/Omega with Python 3, a writable local profile, and normal add-on-manager access. Other Kodi major versions are rejected by this candidate. Android/LibreELEC/Windows behavior is not yet device-tested.
-- Configure **Jurialmunkey's Omega repository** (`repository.jurialmunkey`) for Arctic Fuse 3 and its dependencies. The observed live index offers Arctic Fuse 3.3.12, Skin Variables 2.2.9, TMDb Helper 6.17.9 and Texture Maker 0.2.11.
-- Configure a compatible **Emby Next Gen** repository (`repository.beta.emby.kodi` for the referenced setup). The intended add-on ID is `plugin.service.emby-next-gen`, not the legacy Python-2 `plugin.video.emby`. Repository metadata from an earlier install is not proof of current endpoint reachability.
-- The existing **Serph91P repository** supplies Twitch and Gronkh.tv. A compatible **YouTube** source is also required; the wizard does not silently bootstrap external repositories.
-- Kodi must allow the configured repository to satisfy the requested add-ons. Repository availability and dependencies are handled by Kodi and may still require native confirmations. A timeout/cancellation or unavailable package is reported as incomplete, not success.
-- Applying/restoring the layout requires Arctic Fuse 3 to be inactive. Select Estuary manually first, then select Arctic manually afterward. The wizard deliberately does not restart or reload the skin.
-- YouTube may require additional API/OAuth configuration beyond a login. Emby needs device-local server and library-sync choices. This candidate opens the relevant settings/add-on; it neither handles nor verifies credentials.
+[Estouchy's official source](https://github.com/xbmc/skin.estouchy) is not archived, but the latest source commit found is `31fe633093718505eb2c6f719b5b571afdc45997` from **2024-02-06**, version 4.0.0. That is not evidence of active current maintenance. Estouchy is also absent from the checked [official Omega add-on index](https://mirrors.kodi.tv/addons/omega/addons.xml.gz). Neither fact alone proves abandonment or incompatibility on every platform, but automatic fresh-device availability must not be promised.
 
-**The requested “add one repo, install everything, then only log in” experience is not yet achieved.** Safe external-repository bootstrapping, integration with this repository's immutable publication contract, and fresh-device acceptance remain release gates. The production repository/publication pipeline is unchanged.
+Instead this candidate uses **Estuary 4.0.0 bundled in Kodi Omega**. Its [official SkinSettings.xml](https://github.com/xbmc/xbmc/blob/Omega/addons/skin.estuary/xml/SkinSettings.xml) explicitly exposes `Skin.ToggleSetting(touchmode)` / `Skin.HasSetting(touchmode)`. The wizard uses the equivalent fixed `Skin.SetBool(touchmode)` and `Skin.Reset(touchmode)` operations, not active-skin XML edits. This is a documented-feature recommendation, not a touch usability benchmark.
 
-## Safety model
+## Common media add-ons
 
-Only an exact allowlist of Arctic layout-node JSON files and selected merged Arctic skin settings may be written, relative to `special://profile` (already Kodi's userdata directory). Untouched skin settings are preserved. Complete local backups and a hash manifest precede layout mutation; restore validates the manifest and preserves conflicting user changes. Existing backup directories are not overwritten. Symlinks and path traversal are refused. Reapplying identical content is a no-op. Backups may contain the device's pre-existing skin configuration and therefore remain local; do not publish them.
+Each profile requests the same media add-ons through Kodi's add-on manager:
 
-Atomic writes reduce interrupted-file damage. This is not a security boundary against a hostile concurrent process modifying the same profile. The real skin/parser and on-device interruption behavior remain acceptance work.
+- Emby Next Gen (`plugin.service.emby-next-gen`), not the legacy Python-2 Emby ID.
+- Twitch, YouTube and Gronkh.tv.
+- TubeCast and PVR IPTV Simple.
+
+Only the selected skin is required; Amber/Touch do not force-install Arctic or its helpers. Skin dependencies and platform-specific PVR binaries are resolved by Kodi. No foreign binary ZIP is copied across devices. TubeCast/PVR open their own settings, not fictitious video-plugin routes. Account, Emby server/library sync, IPTV playlist and EPG choices remain device-local. YouTube may require API/OAuth setup in addition to sign-in.
+
+This is a curated declared set, not an automatic clone of every add-on or setting from an old device. Repository manager confirmations and missing sources can still interrupt installation and are reported as incomplete.
+
+## Safety and prerequisites
+
+- Kodi 21/Omega, Python 3 and a writable local profile are required. Other Kodi majors are rejected. Android/LibreELEC/Windows/iOS behavior is not device-validated.
+- Configure the needed repositories first: Jurialmunkey Omega for Arctic; compatible Emby Next Gen source; Serph91P for Twitch/Gronkh/TubeCast; compatible YouTube source; official Kodi repository/platform packages for Amber and IPTV Simple. The wizard does not silently bootstrap missing repositories.
+- File-based layouts/restore require neutral **Estuary** to be active; select the desired final skin manually afterward. No automatic skin switch, reload or restart occurs. Touchmode is a small explicit native runtime setting, not a skin reload.
+- Only fixed per-profile file allowlists may be changed. Profile and symlink checks, complete preimages, persisted hash manifests, atomic writes/readback and drift-aware restore protect layout changes. Old Arctic v1 manifests remain supported; Amber uses a profile-bound v2 manifest; touchmode uses a narrowly validated v3 runtime-state manifest with no supplied executable action.
+- Accounts, cookies, OAuth tokens, personal databases, private source URLs, device paths and raw backup data are never shipped. Do not publish local preimage backups; existing settings in those backups may be private.
+- No `favourites.xml` edits are performed while Kodi holds its favourites in memory. No Kodi add-on database or add-on code directory is modified directly.
+- This is not a security boundary against a hostile concurrent writer in the same profile.
+
+**The original one-repo/only-login goal is still not a released end-to-end feature.** External-repository bootstrap, immutable publication integration and fresh-device skin/navigation/sync/login acceptance remain open. No production publication pipeline changes are included.
 
 ## Build and test
 
-From the repository root, with Python 3 and PyYAML installed in an isolated environment for the existing workflow tests:
+From the repository root, use an isolated Python environment with PyYAML for existing workflow tests:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_setup_wizard tests.test_setup_config_safety tests.test_setup_package -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_setup_wizard tests.test_setup_config_safety tests.test_setup_package tests.test_setup_profiles tests.test_setup_layout_profiles -v
 PYTHONDONTWRITEBYTECODE=1 python3 tools/build_setup_addon.py --output-dir dist
 ```
 
-The builder uses a fixed runtime-file allowlist and deterministic ZIP timestamps. No test fixtures, README, private metadata, caches or backup files are packaged. Run the full existing suite separately and compare any pre-existing fixture-date failures with an unchanged baseline; do not equate a local mock run with Kodi runtime evidence.
+The ZIP builder has a fixed runtime-member allowlist and deterministic timestamps. No tests, documentation, caches or personal backups are packaged. Tests exercise `default.py` using a restricted supported Kodi module surface and real temporary-file transactions, but do not claim real Kodi rendering or device acceptance. Compare full-suite results against an untouched source baseline; existing date-sensitive publication fixtures must not be weakened to get a green result.
 
-Supported API references: Kodi Omega `xbmc/interfaces/legacy/Addon.h`, `xbmc/interfaces/builtins/AddonBuiltins.cpp`, and `xbmc/interfaces/json-rpc/schema/methods.json` in [Kodi's source](https://github.com/xbmc/xbmc/tree/Omega/xbmc/interfaces). The adapter uses `Addons.GetAddonDetails`, `Addons.SetAddonEnabled`, `Application.GetProperties`, `InstallAddon(...)` and `xbmcvfs.translatePath`. A real-module-surface test executes `default.py` with only these supported methods exposed.
+Additional primary sources: [Amber's official Omega metadata](https://github.com/xbmc/repo-skins/blob/omega/skin.amber/addon.xml), [Amber menu format](https://github.com/bartolomesoriano/skin.amber/blob/master/shortcuts/mainmenu.DATA.xml), [Amber overrides](https://github.com/bartolomesoriano/skin.amber/blob/master/shortcuts/overrides.xml), and the official Omega Skin Shortcuts 2.0.3 package's `resources/lib/skinshorcuts/datafunctions.py` for skin-prefixed menu paths. Supported Kodi API contracts are in [Kodi Omega's interfaces](https://github.com/xbmc/xbmc/tree/Omega/xbmc/interfaces).

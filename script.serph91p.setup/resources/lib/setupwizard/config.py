@@ -23,6 +23,13 @@ ALLOWED = {SKIN_NODE + name for name in (
     "skinvariables-shortcut-1103widgets.json",
 )}
 ALLOWED_TARGETS = ALLOWED | {SKIN_SETTINGS}
+AMBER_MENU = 'addon_data/script.skinshortcuts/skin.amber-mainmenu.DATA.xml'
+POLICIES = {
+    'arctic': ALLOWED_TARGETS,
+    'amber': {AMBER_MENU},
+    'touch': set(),  # Native touch layout; no live cached favourites.xml edits.
+}
+ALL_TARGETS = set().union(*POLICIES.values())
 SAFE_SETTINGS = {
     "homeswitcher.vertical": "true",
     "homeswitcher.disablefirstwidgetfocus": "true",
@@ -54,7 +61,7 @@ def _relative(value: str, *, settings: bool = False) -> PurePosixPath:
     p = PurePosixPath(value)
     if p.is_absolute() or str(p) != value or any(x in ("", ".", "..") for x in p.parts):
         raise ValueError("invalid relative path")
-    if value not in (ALLOWED_TARGETS if settings else ALLOWED):
+    if value not in (ALL_TARGETS if settings else ALLOWED):
         raise ValueError("template path is not allowlisted")
     return p
 
@@ -198,11 +205,29 @@ def _build_stage(profile: Path, spec: dict):
 
 def apply_template(profile, backup_dir, template_data) -> list[str]:
     profile = _profile(profile)
+    spec = validate_template(template_data)
+    return _apply_stage(profile, backup_dir, _build_stage(profile, spec), 'arctic')
+
+
+def apply_payloads(profile, backup_dir, payloads: dict, policy: str) -> list[str]:
+    """Internal curated adapters only; exact per-profile target policy."""
+    profile = _profile(profile)
+    if policy not in ('amber', 'touch') or set(payloads) != POLICIES[policy]:
+        raise ValueError('payload path set does not match fixed profile policy')
+    stage = []
+    for rel, new in sorted(payloads.items()):
+        if not isinstance(new, bytes) or len(new) > MAX_FILE_BYTES:
+            raise ValueError('invalid curated payload')
+        target = _target(profile, rel)
+        old = target.read_bytes() if target.exists() else None
+        stage.append((rel, target, old, new))
+    return _apply_stage(profile, backup_dir, stage, policy)
+
+
+def _apply_stage(profile, backup_dir, stage, policy):
     backup = _backup(backup_dir, profile)
     if backup.exists():
-        raise ValueError("backup destination must be new")
-    spec = validate_template(template_data)
-    stage = _build_stage(profile, spec)
+        raise ValueError('backup destination must be new')
     if all(old == new for _, _, old, new in stage):
         return []
     backup_parent = backup.parent
@@ -214,7 +239,8 @@ def apply_template(profile, backup_dir, template_data) -> list[str]:
         entries.append({"path": rel, "existed": old is not None,
                         "old_sha256": _sha(old) if old is not None else None,
                         "new_sha256": _sha(new), "backup": "files/" + rel if old is not None else None})
-    manifest = {"schema": 1, "files": entries}
+    manifest = ({'schema': 1, 'files': entries} if policy == 'arctic'
+                else {'schema': 2, 'profile': policy, 'files': entries})
     backup.mkdir(mode=0o700)
     try:
         for (_, _, old, _), entry in zip(stage, entries):
@@ -236,6 +262,8 @@ def apply_template(profile, backup_dir, template_data) -> list[str]:
             if current == new:
                 continue
             _atomic(target, new)
+            if target.read_bytes() != new:
+                raise OSError('configuration readback mismatch; backup preserved')
         return [rel for rel, _, _, _ in stage]
     except Exception:
         # Keep the complete backup for recovery after any partial mutation.
@@ -250,10 +278,18 @@ def _validate_manifest(profile: Path, backup: Path):
     if not mp.is_file() or mp.stat().st_size > MAX_FILE_BYTES:
         raise ValueError("missing or oversized manifest")
     manifest = json.loads(mp.read_text(encoding="utf-8"))
-    if not isinstance(manifest, dict) or set(manifest) != {"schema", "files"} or manifest["schema"] != 1:
-        raise ValueError("invalid manifest")
-    records = manifest["files"]
-    if not isinstance(records, list) or len(records) != len(ALLOWED_TARGETS):
+    if not isinstance(manifest, dict):
+        raise ValueError('invalid manifest')
+    if set(manifest) == {'schema', 'files'} and manifest['schema'] == 1:
+        policy = 'arctic'
+    elif (set(manifest) == {'schema', 'profile', 'files'}
+          and manifest['schema'] == 2 and manifest['profile'] in ('amber', 'touch')):
+        policy = manifest['profile']
+    else:
+        raise ValueError('invalid manifest schema/profile')
+    allowed = POLICIES[policy]
+    records = manifest['files']
+    if not isinstance(records, list) or len(records) != len(allowed):
         raise ValueError("invalid manifest file list")
     seen = set()
     result = []
@@ -261,6 +297,8 @@ def _validate_manifest(profile: Path, backup: Path):
         if not isinstance(item, dict) or set(item) != {"path", "existed", "old_sha256", "new_sha256", "backup"}:
             raise ValueError("invalid manifest entry")
         rel = str(_relative(item["path"], settings=True))
+        if rel not in allowed:
+            raise ValueError('manifest path does not belong to the recorded profile')
         if rel in seen:
             raise ValueError("duplicate manifest path")
         seen.add(rel)
@@ -277,7 +315,7 @@ def _validate_manifest(profile: Path, backup: Path):
         elif item["backup"] is not None or item["old_sha256"] is not None:
             raise ValueError("invalid new-file backup record")
         result.append((item, target))
-    if seen != ALLOWED_TARGETS:
+    if seen != allowed:
         raise ValueError("manifest path set mismatch")
     return result
 

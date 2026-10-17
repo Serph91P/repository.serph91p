@@ -20,13 +20,19 @@ REQUIREMENTS = (
     AddonRequirement('resource.images.studios.coloured', (0, 0, 1), 'Studio-Symbole'),
     AddonRequirement('resource.font.robotocjksc', (0, 0, 3), 'Roboto CJK'),
 )
+PROFILE_REQUIREMENTS = (
+    AddonRequirement('skin.amber', (3, 99, 2), 'Amber'),
+    AddonRequirement('skin.estuary', (4, 0, 0), 'Estuary (Kodi-Standard)'),
+)
 MEDIA_REQUIREMENTS = (
     AddonRequirement('plugin.service.emby-next-gen', (12, 4, 23), 'Emby Next Gen'),
     AddonRequirement('plugin.video.twitch', (3, 1, 11), 'Twitch'),
     AddonRequirement('plugin.video.youtube', (7,), 'YouTube'),
     AddonRequirement('plugin.video.gronkhtv', (2, 3, 7), 'Gronkh.tv'),
+    AddonRequirement('script.tubecast', (0,), 'TubeCast'),
+    AddonRequirement('pvr.iptvsimple', (0,), 'PVR IPTV Simple'),
 )
-ALL_REQUIREMENTS = REQUIREMENTS + MEDIA_REQUIREMENTS
+ALL_REQUIREMENTS = REQUIREMENTS + PROFILE_REQUIREMENTS + MEDIA_REQUIREMENTS
 REQUIREMENTS_BY_ID = {r.addon_id: r for r in ALL_REQUIREMENTS}
 
 class KodiAddonAPI:

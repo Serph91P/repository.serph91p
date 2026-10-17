@@ -13,14 +13,15 @@ from unittest.mock import patch
 
 ADDON = Path(__file__).resolve().parents[1] / 'script.serph91p.setup'
 sys.path.insert(0, str(ADDON))
-from resources.lib.setupwizard.addons import (ALL_REQUIREMENTS, REQUIREMENTS,
+from resources.lib.setupwizard.addons import (ALL_REQUIREMENTS, REQUIREMENTS, MEDIA_REQUIREMENTS,
     KodiAddonAPI, bounded_wait, check_requirement, ensure_requirement,
     version_at_least)
 
 class Surface:
-    def __init__(self, profile, selections=(), ready=True, skin='skin.estuary', major=21):
-        self.profile, self.selections, self.skin, self.major = profile, iter(selections), skin, major
+    def __init__(self, profile, selections=(), ready=True, skin='skin.estuary', major=21, profile_index=0):
+        self.profile, self.selections, self.skin, self.major = profile, iter((profile_index, *selections)), skin, major
         self.commands, self.dialogs, self.settings, self.log = [], [], [], []
+        self.touchmode = False
         self.bad_response = False
         self.items = {r.addon_id: {'addonid': r.addon_id, 'enabled': True,
             'version': '.'.join(map(str, r.min_version))} for r in ALL_REQUIREMENTS} if ready else {}
@@ -39,6 +40,7 @@ class Surface:
         self.modules = {
             'xbmc': types.SimpleNamespace(executeJSONRPC=self.rpc,
                 executebuiltin=self.builtin, Monitor=Monitor, getSkinDir=lambda: self.skin,
+                getCondVisibility=self.condition,
                 LOGINFO=1, log=lambda message, level: self.log.append(message)),
             'xbmcaddon': types.SimpleNamespace(Addon=Addon),
             'xbmcgui': types.SimpleNamespace(Dialog=Dialog),
@@ -64,9 +66,17 @@ class Surface:
     @staticmethod
     def assert_request(request):
         assert request['jsonrpc'] == '2.0' and request['id'] == 1
-    def builtin(self, command):
+    def condition(self, expression):
+        if expression != 'Skin.HasSetting(touchmode)':
+            raise AssertionError(expression)
+        return self.touchmode
+    def builtin(self, command, wait=False):
         self.commands.append(command)
-        if command.startswith('InstallAddon('):
+        if command == 'Skin.SetBool(touchmode)':
+            self.touchmode = True
+        elif command == 'Skin.Reset(touchmode)':
+            self.touchmode = False
+        elif command.startswith('InstallAddon('):
             addon_id = command[len('InstallAddon('):-1]
             req = next(r for r in ALL_REQUIREMENTS if r.addon_id == addon_id)
             self.items[addon_id] = {'addonid':addon_id, 'enabled': True, 'version': '.'.join(map(str,req.min_version))}
@@ -86,8 +96,8 @@ class WizardTests(unittest.TestCase):
     def test_actual_module_surface_default_to_install_all(self):
         with tempfile.TemporaryDirectory() as tmp:
             s = Surface(Path(tmp), [0,6], ready=False); s.run()
-            self.assertEqual(set(s.items), {r.addon_id for r in ALL_REQUIREMENTS})
-            self.assertEqual(len(s.commands), len(ALL_REQUIREMENTS))
+            self.assertEqual(set(s.items), {r.addon_id for r in REQUIREMENTS + MEDIA_REQUIREMENTS})
+            self.assertEqual(len(s.commands), len(REQUIREMENTS + MEDIA_REQUIREMENTS))
             self.assertFalse(any('Restart' in x or 'Reload' in x or 'Skin.SetSkin' in x for x in s.commands))
             self.assertTrue(any('Alle benötigten Addons' in str(x) for x in s.dialogs))
     def test_default_layout_apply_and_restore_route(self):

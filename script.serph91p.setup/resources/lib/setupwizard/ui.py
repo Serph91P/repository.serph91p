@@ -2,12 +2,13 @@
 from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
-from .addons import (ALL_REQUIREMENTS, MEDIA_REQUIREMENTS, KodiAddonAPI,
+from .addons import (REQUIREMENTS, PROFILE_REQUIREMENTS, MEDIA_REQUIREMENTS, KodiAddonAPI,
                      bounded_wait, check_requirement, install_selected)
 from .config import apply_template, rollback, MANIFEST
 from .templates import minimal_layout_template, describe_template
+from .profiles import PROFILES, requirements_for
 
-TITLE = 'Serph91P Arctic Setup'
+TITLE = 'Serph91P Kodi Setup'
 REPOSITORIES = (
     'Arctic Fuse: repository.jurialmunkey (Omega). '
     'Emby: repository.beta.emby.kodi für Kodi 21. '
@@ -39,18 +40,26 @@ def run():
     def log(message):
         xbmc.log('[script.serph91p.setup] ' + message, xbmc.LOGINFO)
 
+    selected = dialog.select(TITLE + ' — Skin-Profil wählen', [p.label for p in PROFILES])
+    if selected < 0 or selected >= len(PROFILES):
+        return
+    profile_choice = PROFILES[selected]
+    if profile_choice.warning and not dialog.yesno(TITLE, profile_choice.warning):
+        return
+    required = requirements_for(profile_choice, REQUIREMENTS, PROFILE_REQUIREMENTS, MEDIA_REQUIREMENTS)
+
     def all_ready():
-        return all(check_requirement(api, item)[0] for item in ALL_REQUIREMENTS)
+        return all(check_requirement(api, item)[0] for item in required)
 
     def inactive():
-        if xbmc.getSkinDir() == 'skin.arctic.fuse.3':
-            dialog.ok(TITLE, 'Zum Schreiben oder Wiederherstellen bitte zuerst in Kodi manuell auf Estuary wechseln. Der laufende Skin könnte die Dateien sonst überschreiben. Kein automatischer Skinwechsel oder Neustart.')
+        if xbmc.getSkinDir() != 'skin.estuary':
+            dialog.ok(TITLE, 'Zum Schreiben oder Wiederherstellen zuerst manuell Estuary aktivieren. Kein automatischer Skinwechsel oder Neustart.')
             return False
         return True
 
-    choices = ['Addons installieren / prüfen', 'Portables Arctic-Layout anwenden',
+    choices = ['Addons installieren / prüfen', 'Portables Skin-Layout anwenden',
                'Bei Diensten anmelden', 'Layout-Sicherung wiederherstellen',
-               'Status und Voraussetzungen', 'Kodi-Oberflächeneinstellungen öffnen', 'Beenden']
+               'Status und Voraussetzungen', 'Kodi-Oberflächeneinstellungen öffnen', 'Beenden', 'Inhalte öffnen']
     while not monitor.abortRequested():
         choice = dialog.select(TITLE, choices)
         if choice in (-1, 6):
@@ -59,12 +68,31 @@ def run():
             if choice == 0:
                 if not dialog.yesno(TITLE, REPOSITORIES + '\n\nBenötigte Addons jetzt prüfen? Einzelne Änderungen werden nochmals bestätigt.'):
                     continue
-                okay = install_selected(api, ALL_REQUIREMENTS,
+                okay = install_selected(api, required,
                     lambda prompt: dialog.yesno(TITLE, prompt),
                     lambda req: bounded_wait(api, req, monitor=monitor), log)
                 dialog.ok(TITLE, ('Alle benötigten Addons sind installiert und aktiv. Layout und Anmeldungen bleiben getrennte Schritte.' if okay else
                     'Einrichtung unvollständig. Ein Addon fehlt, ist deaktiviert, inkompatibel oder wurde nicht rechtzeitig installiert.\n' + REPOSITORIES))
             elif choice == 1:
+                if not profile_choice.layout_supported:
+                    dialog.ok(TITLE, 'Für ' + profile_choice.label + ' bietet dieser Assistent kein Layout an. Bitte die skin-eigenen Einstellungen verwenden; Arctic-Fuse-Dateien werden nicht geschrieben.')
+                    continue
+                if profile_choice.key != 'arctic':
+                    from .layouts import apply_layout, describe_layout
+                    if not all_ready() or not inactive() or not dialog.yesno(TITLE, describe_layout(profile_choice.key) + '\nFortfahren?'):
+                        continue
+                    backup_root = profile / 'setupwizard-backups'
+                    if backup_root.is_symlink():
+                        raise ValueError('unsafe backup root')
+                    backup_root.mkdir(mode=0o700, exist_ok=True)
+                    backup = backup_root / uuid4().hex
+                    if profile_choice.key == 'touch':
+                        from .touch import enable_touch
+                        changed = enable_touch(profile, backup, xbmc)
+                    else:
+                        changed = apply_layout(profile, backup, profile_choice.key)
+                    dialog.ok(TITLE, 'Profil-Konfiguration angewendet, gesichert und zurückgelesen.' if changed else 'Profil-Konfiguration bereits aktuell; keine Änderung.')
+                    continue
                 if not all_ready():
                     dialog.ok(TITLE, 'Zuerst alle benötigten Addons installieren/aktivieren. Es wurde kein Layout geschrieben.')
                     continue
@@ -88,6 +116,9 @@ def run():
                 if req.addon_id == 'plugin.service.emby-next-gen':
                     dialog.ok(TITLE, 'Emby-Verbindung und Bibliothekssynchronisierung im Emby-Addon auf diesem Gerät einrichten. Diese Ansicht öffnet nur dessen Einstellungen; eine erfolgreiche Anmeldung wird nicht behauptet.')
                     xbmcaddon.Addon(req.addon_id).openSettings()
+                elif req.addon_id in ('script.tubecast', 'pvr.iptvsimple'):
+                    dialog.ok(TITLE, 'Hier die geräteeigene Konfiguration vornehmen: TubeCast-Empfang beziehungsweise IPTV-Playlist und EPG. Keine Zugangsdaten oder privaten Quell-URLs werden übernommen.')
+                    xbmcaddon.Addon(req.addon_id).openSettings()
                 else:
                     dialog.ok(TITLE, 'Im folgenden Addon die Anmeldung durchführen. YouTube kann zusätzliche API-/OAuth-Einrichtung verlangen. Dieser Assistent liest oder speichert keine Zugangsdaten und prüft keine Anmeldung.')
                     xbmc.executebuiltin('ActivateWindow(Videos,plugin://{}/,return)'.format(req.addon_id))
@@ -105,14 +136,25 @@ def run():
                 selected = dialog.select('Layout-Sicherung auswählen', [p.name for p in backups])
                 if selected < 0 or not dialog.yesno(TITLE, 'Gesichertes Layout wiederherstellen? Nachträgliche fremde Änderungen werden nicht überschrieben.'):
                     continue
-                rollback(profile, backups[selected])
+                from .touch import restore_layout
+                restore_layout(profile, backups[selected], xbmc)
                 dialog.ok(TITLE, 'Sicherung geprüft und Layout wiederhergestellt. Kein Skin-Reload und kein Neustart ausgeführt.')
             elif choice == 4:
-                lines = [r.label + ': ' + check_requirement(api, r)[1] for r in ALL_REQUIREMENTS]
+                lines = [r.label + ': ' + check_requirement(api, r)[1] for r in required]
                 dialog.textviewer(TITLE, '\n'.join(lines) + '\n\n' + REPOSITORIES + '\n\nAnmeldungen, Bibliothekssync und tatsächliche Widgets sind hier nicht live geprüft. Das ist ein Geräte-Testkandidat, noch kein freigegebenes Komplettsetup.')
             elif choice == 5:
                 xbmc.executebuiltin('ActivateWindow(appearancesettings)')
                 return
+            elif choice == 7:
+                try:
+                    from .layouts import NAVIGATION
+                except ImportError:
+                    dialog.ok(TITLE, 'Die gemeinsame Inhaltsnavigation ist in diesem Build nicht verfügbar.')
+                    continue
+                selected = dialog.select('Inhalte öffnen', [label for label, _action in NAVIGATION])
+                if 0 <= selected < len(NAVIGATION):
+                    # Actions are repository-owned constants, never user input.
+                    xbmc.executebuiltin(NAVIGATION[selected][1])
         except Exception as exc:
             log('Vorgang fehlgeschlagen: ' + type(exc).__name__)
             dialog.ok(TITLE, 'Vorgang nicht abgeschlossen. Vorhandene Sicherungen bleiben erhalten. Bei fremden Änderungen verweigert Restore das Überschreiben. Details: Fehlertyp ' + type(exc).__name__)
