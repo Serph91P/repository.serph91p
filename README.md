@@ -33,6 +33,10 @@ Alle Addons werden automatisch aktualisiert wenn:
 - Die GitHub Actions Pipeline automatisch eine neue Version baut
 - Kodi erkennt das Update und installiert es automatisch
 
+## Arctic setup wizard candidate
+
+`script.serph91p.setup/` contains a **Kodi 21 development candidate**, not an add-on published in the repository yet. See its [scope, prerequisites, safety model and build instructions](script.serph91p.setup/README.md). Version 0.2.0 offers Arctic Fuse 3, Amber and Estuary touchmode profiles, shared media add-ons and portable navigation. Skin-specific layouts differ; no identical Arctic widgets on touch are promised. External repository bootstrap, immutable publication integration and fresh-device validation remain open in [issue #41](https://github.com/Serph91P/repository.serph91p/issues/41).
+
 ## Fuer Entwickler
 
 Die Repository-Aktualiserung erfolgt automatisch ueber `repository_dispatch` Events von den einzelnen Addon-Repos.
