@@ -1,6 +1,6 @@
 # Serph91P Kodi Setup Wizard
 
-**0.3.0 development candidate for Kodi 21/Omega. Not released or device-approved.**
+**0.3.1 development candidate for Kodi 21/Omega. Not released or device-approved.**
 
 ## One repository, three profiles
 
@@ -28,7 +28,9 @@ All adapters consume one semantic model (`navigation.py`), in this order:
 
 Labels, order and destinations are shared; presentation is skin-specific. Utility controls can differ. Content actions also work via fixed program-entrypoint arguments. No credentials, authenticated reference-device paths or raw userdata backups are distributed.
 
-**Log into Emby and sync on the target before applying the layout.** The wizard discovers that device's local Emby node files and asks which library is Series and which is Twitch VODs. Resume/new/genres destinations use those local nodes, never copied server IDs or an undifferentiated all-series fallback. If suitable nodes are unavailable, layout application stops with an explanation. Accounts, IPTV/EPG, YouTube API/OAuth and library choices stay local. Installation does not prove playback, login or sync success.
+**The layout can be applied before personal Emby setup.** Missing Series/Twitch-VOD bindings are explicitly stored as null. Their native submenu labels say **Emby einrichten** and open Emby's own settings; unresolved paths are never emitted as content widgets. Other groups and public widget routes remain available, subject to their own login requirements. This is layout success, not media/login success.
+
+After Emby login and sync, reapply the layout using neutral Estuary to select local Series and Twitch-VOD libraries. Each can be skipped independently; a missing Twitch-VOD library never blocks Series or the layout. Resume/new/genres use only the target's own discovered nodes, never copied server IDs or an all-series fallback. Existing complete bindings from 0.3.0 and their backups remain valid. Accounts, IPTV/EPG, YouTube API/OAuth and library choices stay local.
 
 ## Apply and restore
 

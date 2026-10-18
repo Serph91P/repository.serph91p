@@ -32,8 +32,7 @@ class CommonTests(unittest.TestCase):
     def test_missing_sync_or_cancel_has_no_layout_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            with self.assertRaisesRegex(ValueError, 'Emby zuerst'):
-                n.library_bindings(root, lambda *_: 0)
+            self.assertEqual(n.library_bindings(root, lambda *_: 0), n.empty_bindings())
             self.assertEqual(list(root.iterdir()), [])
             seed_nodes(root)
             with self.assertRaisesRegex(ValueError, 'abgebrochen'):

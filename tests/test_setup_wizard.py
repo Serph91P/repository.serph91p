@@ -100,6 +100,8 @@ class Surface:
             self.items[addon_id] = {'addonid':addon_id, 'enabled': True, 'version': '.'.join(map(str,req.min_version))}
         elif command == 'UpdateAddonRepos':
             pass
+        elif command == 'Addon.OpenSettings(plugin.service.emby-next-gen)':
+            self.settings.append('plugin.service.emby-next-gen')
         elif not command.startswith('ActivateWindow('):
             raise AssertionError('Unsupported builtin: ' + command)
     def run(self, argv=()):

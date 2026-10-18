@@ -40,7 +40,7 @@ def amber_menu():
 def describe_layout(profile_id):
     if profile_id == 'arctic':
         return ('Arctic: gemeinsames LibreELEC-Menü Movies, Series, Twitch, YouTube, mit Widgets und Untermenüs. '
-                'Lokale Emby-Serien und Twitch-VODs müssen zuvor synchronisiert und ausgewählt sein.')
+                'Persönliche Emby-Ziele können nach Anmeldung und Synchronisation später verknüpft werden.')
     if profile_id == 'amber':
         return ('Amber: gemeinsames LibreELEC-Menü Movies, Series, Twitch, YouTube mit identischen Inhaltszielen als Untermenüs. '
                 'Das ersetzt nur Ambers Skin-Shortcuts-Hauptmenü, mit Sicherung. '
@@ -49,7 +49,7 @@ def describe_layout(profile_id):
     if profile_id == 'touch':
         return ('Estuary MOD V2: gemeinsames LibreELEC-Medienmenü Movies, Series, Twitch, YouTube '
                 'mit den jeweiligen Fortsetzen-/Neu-/Genres-/Plugin-Zielen, eigenen Widgets und Untermenüs. '
-                'Emby muss auf diesem Gerät angemeldet und synchronisiert sein. '
+                'Persönliche Emby-Ziele können auf diesem Gerät später eingerichtet werden. '
                 'Das geteilte Skin-Shortcuts-Menü wird mit Sicherung ersetzt.')
     raise ValueError('unknown profile')
 

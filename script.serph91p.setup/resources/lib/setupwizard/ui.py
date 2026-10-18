@@ -147,7 +147,7 @@ def run(argv=None):
                 if not inactive():
                     continue
                 if not dialog.yesno(TITLE, describe_layout(profile_choice.key) +
-                    '\nEmby muss angemeldet und synchronisiert sein. Die lokalen Serien-/Twitch-VOD-Bibliotheken werden anschließend ausgewählt. '
+                    '\nDas Layout lässt sich auch vor der Emby-Anmeldung anwenden. Fehlende persönliche Bibliotheken bleiben als Emby einrichten markiert und können später verknüpft werden. '
                     'Vorhandene betroffene Dateien werden gesichert. Bei MOD V2 wird das geteilte Skin-Shortcuts-Menü ersetzt. Fortfahren?'):
                     continue
                 bindings = library_bindings(profile, lambda title, options: dialog.select(title, options))
@@ -157,9 +157,17 @@ def run(argv=None):
                 backup_root.mkdir(mode=0o700, exist_ok=True)
                 backup = backup_root / uuid4().hex
                 changed = apply_common_layout(profile, backup, profile_choice.key, bindings)
-                dialog.ok(TITLE, ('Gemeinsames Medienmenü geschrieben, gesichert und zurückgelesen. '
-                    'Gewählten Skin jetzt selbst in Kodi aktivieren; die Anzeige auf diesem Gerät ist damit noch nicht geprüft. Sicherung: ' + str(backup)
-                    if changed else 'Gemeinsames Medienmenü bereits aktuell; keine Änderung.'))
+                pending = sum(value is None for value in bindings.values())
+                message = ('Gemeinsames Medienmenü geschrieben, gesichert und zurückgelesen.'
+                           if changed else 'Gemeinsames Medienmenü bereits aktuell; keine Änderung.')
+                if pending:
+                    message += ('\nEmby-Verknüpfungen noch offen: ' + str(pending) + '. '
+                        'Die markierten Einträge öffnen Emby einrichten; ihre Widgets folgen nach Verknüpfung.'
+                        '\nNach Anmeldung/Sync bei neutralem Estuary erneut Layout anwenden.')
+                message += '\nGewählten Skin jetzt selbst in Kodi aktivieren. Darstellung noch nicht geprüft.'
+                if changed:
+                    message += '\nSicherung: ' + str(backup)
+                dialog.ok(TITLE, message)
             elif choice == 2:
                 selected = dialog.select('Dienst öffnen: Anmeldung bleibt auf diesem Gerät', [r.label for r in MEDIA_REQUIREMENTS])
                 if selected < 0:

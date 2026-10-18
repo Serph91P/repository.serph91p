@@ -3,15 +3,21 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 from urllib.parse import quote
+from typing import Optional, Dict
 from .config import _profile, _no_symlink_ancestors, MAX_FILE_BYTES
 
 BASE = 'special://home/addons/script.serph91p.setup/resources/playlists/'
 PROFILE_IDS = ('arctic', 'amber', 'touch')
+BINDING_KEYS = ('series_resume', 'series_new', 'series_genres', 'twitch_resume', 'twitch_new')
+
+
+def empty_bindings() -> Dict[str, Optional[str]]:
+    return dict.fromkeys(BINDING_KEYS)
 
 @dataclass(frozen=True)
 class Item:
     label: str
-    path: str
+    path: Optional[str]
     target: str = 'videos'
 
 @dataclass(frozen=True)
@@ -57,17 +63,18 @@ def library_bindings(profile, choose):
                         'library://video/' + quote(folder.name, safe='_.-') + '/' + name + '/')
     ready = sorted(k for k, v in candidates.items()
                    if all(any(a[0] == kind for a in v) for kind in ('resume', 'new', 'genres')))
-    if len(ready) < 2:
-        raise ValueError('Emby zuerst anmelden und Serien sowie Twitch-VOD-Bibliothek synchronisieren. '
-                         'Die benötigten lokalen Fortsetzen-/Neu-Knoten fehlen; Layout wurde nicht angewendet.')
+
     selected = {}
     for key, title in (('series', 'Serien-Bibliothek'), ('twitch', 'Twitch-VOD-Bibliothek')):
         options = [x for x in ready if x not in selected.values()]
-        index = choose(title, options)
-        if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < len(options):
+        if not options:
+            continue  # Install layout with explicit None bindings before personal sync.
+        index = choose(title, options + ['Später einrichten / nicht verknüpfen'])
+        if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index <= len(options):
             raise ValueError('Bibliotheksauswahl abgebrochen; Layout nicht angewendet')
-        selected[key] = options[index]
-    result = {}
+        if index < len(options):
+            selected[key] = options[index]
+    result = empty_bindings()
     for key, label in selected.items():
         v = candidates[label]
         preference = ('dynamic', 'static') if key == 'series' else ('static', 'dynamic')
@@ -78,10 +85,12 @@ def library_bindings(profile, choose):
 
 def validate_bindings(value):
     import re
-    keys = {'series_resume', 'series_new', 'series_genres', 'twitch_resume', 'twitch_new'}
+    keys = set(BINDING_KEYS)
     if not isinstance(value, dict) or set(value) != keys:
         raise ValueError('invalid local library bindings')
     for path in value.values():
+        if path is None:
+            continue
         if not isinstance(path, str) or not re.fullmatch(
             r'library://video/emby_[A-Za-z0-9_.%\-]+/(?:resume_episode|inprogressepisodes|recentlyadded|genres)\.xml/', path):
             raise ValueError('non-local or unsupported library binding')
@@ -96,8 +105,14 @@ def load_bindings(profile, profile_id):
     p = _profile(profile) / binding_path(profile_id)
     _no_symlink_ancestors(p)
     if not p.is_file() or p.stat().st_size > MAX_FILE_BYTES:
-        raise ValueError('Layout zuerst nach Emby-Synchronisation einrichten.')
+        raise ValueError('Layout zuerst einrichten; Emby kann später verknüpft werden.')
     return validate_bindings(json.loads(p.read_text(encoding='utf-8')))
+
+
+def _library_item(label, path):
+    if path is None:
+        return Item(label + ' (Emby einrichten)', None, 'setup')
+    return Item(label, path)
 
 
 def groups(bindings):
@@ -109,13 +124,13 @@ def groups(bindings):
             Item('Top Rated Movies', BASE + 'top-rated-movies.xsp'),
             Item('Genres', 'library://video/movies/genres.xml/'))),
         Group('series', 'Series', (
-            Item('Fortsetzen', b['series_resume']), Item('Neu', b['series_new']),
+            _library_item('Fortsetzen', b['series_resume']), _library_item('Neu', b['series_new']),
             Item('Top Rated', 'plugin://plugin.video.themoviedb.helper/?info=top_rated&tmdb_type=tv&widget=true'),
-            Item('Genres', b['series_genres']))),
+            _library_item('Genres', b['series_genres']))),
         Group('twitch', 'Twitch', (
             Item('Following Live Channels', 'plugin://plugin.video.twitch/?mode=followed&content=live'),
-            Item('Twitch VOD fortsetzen', b['twitch_resume']),
-            Item('Neue Twitch VODs', b['twitch_new']),
+            _library_item('Twitch VOD fortsetzen', b['twitch_resume']),
+            _library_item('Neue Twitch VODs', b['twitch_new']),
             Item('Latest uploads', 'plugin://plugin.video.gronkhtv/?action=listing&category=Latest+uploads'))),
         Group('youtube', 'YouTube', (
             Item('Recommendations', 'plugin://plugin.video.youtube/special/recommendations'),
@@ -127,6 +142,10 @@ def groups(bindings):
 
 
 def action(item):
+    if item.target == 'setup':
+        if item.path is not None:
+            raise ValueError('invalid deferred setup action')
+        return 'Addon.OpenSettings(plugin.service.emby-next-gen)'
     if item.target == 'window':
         if item.path not in ('TVChannels', 'TVGuide'):
             raise ValueError('unsupported utility window')

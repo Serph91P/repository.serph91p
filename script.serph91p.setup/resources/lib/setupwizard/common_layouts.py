@@ -33,10 +33,14 @@ def common_payloads(profile, profile_id, bindings):
         # Reference LibreELEC has native PVR slot1107 enabled; Kodi hides it until channels exist.
         settings['HomeSwitcher.1107.Toggle'] = 'true'
         for slot, group in zip(('home', '1101', '1102', '1103'), media):
-            rows = [{'label': item.label, 'icon': '', 'path': item.path, 'target': item.target}
-                    for item in group.items]
-            for kind in ('widgets', 'submenu'):
-                payload[SKIN_NODE + 'skinvariables-shortcut-' + slot + kind + '.json'] = _json(rows)
+            widgets = [{'label': item.label, 'icon': '', 'path': item.path, 'target': item.target}
+                       for item in group.items if item.target == 'videos' and item.path is not None]
+            submenu = [{'label': item.label, 'icon': '',
+                        'path': item.path if item.target == 'videos' else action(item),
+                        'target': 'videos' if item.target == 'videos' else ''}
+                       for item in group.items]
+            payload[SKIN_NODE + 'skinvariables-shortcut-' + slot + 'widgets.json'] = _json(widgets)
+            payload[SKIN_NODE + 'skinvariables-shortcut-' + slot + 'submenu.json'] = _json(submenu)
             prefix = 'HomeSwitcher.' + ('Home' if slot == 'home' else slot)
             settings[prefix + '.Name'] = group.label
             if slot != 'home':
@@ -53,7 +57,8 @@ def common_payloads(profile, profile_id, bindings):
             properties = []
             if profile_id == 'touch':
                 properties.append(['widget', 'LiveTVWidget' if group.key == 'livetv' else 'PersonalWidgetList'])
-                for number, item in enumerate(group.items if group.key != 'livetv' else (), 1):
+                widget_items = [item for item in group.items if item.target == 'videos' and item.path is not None]
+                for number, item in enumerate(widget_items if group.key != 'livetv' else (), 1):
                     aspect = ('135' if item.label == 'Genres' else
                               '31338' if group.key in ('movies', 'series') else '31339')
                     for key, value in (('widgetName', item.label), ('widgetPath', item.path),
