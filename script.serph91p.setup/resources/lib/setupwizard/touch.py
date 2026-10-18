@@ -63,4 +63,14 @@ def restore_layout(profile, backup, xbmc):
     data = json.loads(path.read_text(encoding='utf-8'))
     if isinstance(data, dict) and data.get('schema') == 3:
         return restore_touch(profile, backup, xbmc)
+    from . import regional
+    from .addons import KodiAddonAPI
+    journal = backup / regional.JOURNAL
+    if journal.exists() or journal.is_symlink():
+        api = KodiAddonAPI(xbmc)
+        regional.preflight_restore(profile, backup, api)
+        changed = [] if data == regional.ONLY_LOCALE else rollback(profile, backup)
+        return changed + regional.restore(profile, backup, api)
+    if data == regional.ONLY_LOCALE:
+        raise ValueError('locale-only backup journal missing')
     return rollback(profile, backup)

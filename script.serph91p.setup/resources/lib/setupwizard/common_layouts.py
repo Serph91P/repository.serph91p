@@ -1,7 +1,8 @@
 """Skin-specific adapters for the single LibreELEC-reference media menu."""
 import json
+from pathlib import Path
 from xml.etree import ElementTree as ET
-from .config import (SKIN_NODE, SKIN_SETTINGS, SAFE_SETTINGS, ARCTIC_REFERENCE_ICONS, POLICIES,
+from .config import (SKIN_NODE, SKIN_SETTINGS, SAFE_SETTINGS, ARCTIC_REFERENCE_ICONS, POLICIES, COMMON_POLICY_IDS,
                      _profile, _target, _merge_skin_settings, apply_payloads)
 from .navigation import groups, action, group_action, binding_path, binding_bytes
 
@@ -29,7 +30,12 @@ def common_payloads(profile, profile_id, bindings):
     media = groups(bindings)
     payload = {binding_path(profile_id): binding_bytes(bindings)}
     if profile_id == 'arctic':
-        settings = dict(SAFE_SETTINGS)
+        reference = json.loads((Path(__file__).resolve().parents[2] / 'templates/arctic-reference.json').read_text())
+        if reference.get('schema') != 1 or reference.get('skin') != 'skin.arctic.fuse.3':
+            raise ValueError('invalid Arctic reference')
+        settings = {key: row['value'] for key, row in reference['settings'].items()}
+        types = {key.lower(): row['type'] for key, row in reference['settings'].items()}
+        settings.update(SAFE_SETTINGS)
         settings.update(ARCTIC_REFERENCE_ICONS)
         # Reference LibreELEC has native PVR slot1107 enabled; Kodi hides it until channels exist.
         settings['HomeSwitcher.1107.Toggle'] = 'true'
@@ -49,13 +55,36 @@ def common_payloads(profile, profile_id, bindings):
                 settings[prefix + '.Shortcut.Target'] = ''
         target = _target(profile, SKIN_SETTINGS)
         payload[SKIN_SETTINGS] = _merge_skin_settings(
-            target.read_bytes() if target.exists() else None, settings)
+            target.read_bytes() if target.exists() else None, settings, types)
     elif profile_id in ('amber', 'touch'):
         prefix = 'skin.amber-' if profile_id == 'amber' else ''
         root_path = 'addon_data/script.skinshortcuts/' + prefix
         main = ET.Element('shortcuts')
         for group in media:
             properties = []
+            if profile_id == 'amber':
+                # Amber's six native shelf families start unnumbered, then .2–.6.
+                # Explicitly disable unused slots, including movie preset defaults.
+                items = [item for item in group.items if item.target == 'videos' and item.path is not None]
+                for number in range(1, 7):
+                    suffix = '' if number == 1 else '.' + str(number)
+                    if number > len(items):
+                        fields = (('widget', 'None'), ('widgetType', 'none'),
+                                  ('widgetTarget', 'false'), ('widgetPath', ''))
+                    else:
+                        item = items[number - 1]
+                        kind = ('movies' if group.key == 'movies' else
+                                'episodes' if group.key == 'series' and item.label in ('Fortsetzen', 'Neu')
+                                else 'tvshows' if group.key == 'series' else 'videos')
+                        artwork = ('Square' if item.label == 'Genres' else
+                                   'Poster' if kind in ('movies', 'tvshows') else 'Thumb')
+                        source = ('Addon' if item.path.startswith('plugin://') else
+                                  'Playlist' if item.path.endswith('.xsp') else 'Library')
+                        fields = (('widget', source), ('widgetName', item.label),
+                                  ('widgetType', kind), ('widgetTarget', 'video'),
+                                  ('widgetPath', item.path), ('widgetArtwork', artwork),
+                                  ('widgetLimit', '$NUMBER[25]'))
+                    properties.extend([key + suffix, value] for key, value in fields)
             if profile_id == 'touch':
                 properties.append(['widget', 'LiveTVWidget' if group.key == 'livetv' else 'PersonalWidgetList'])
                 widget_items = [item for item in group.items if item.target == 'videos' and item.path is not None]
@@ -79,6 +108,10 @@ def common_payloads(profile, profile_id, bindings):
             _shortcut(main, label, builtin, identity)
         payload[root_path + 'mainmenu.DATA.xml'] = _xml(main)
         if profile_id == 'touch':
+            # Honor either existing Shared-menu preference without changing it.
+            for path, content in list(payload.items()):
+                if path.startswith(root_path):
+                    payload[root_path + 'skin.estuary.modv2-' + path[len(root_path):]] = content
             rel = 'addon_data/skin.estuary.modv2/settings.xml'
             target = _target(profile, rel)
             settings = ET.fromstring(target.read_bytes()) if target.exists() else ET.Element('settings', {'version': '2'})
@@ -91,11 +124,11 @@ def common_payloads(profile, profile_id, bindings):
             payload[rel] = _xml(settings)
     else:
         raise ValueError('unknown skin profile')
-    if set(payload) != POLICIES[profile_id + '-common']:
+    if set(payload) != POLICIES[COMMON_POLICY_IDS[profile_id]]:
         raise ValueError('adapter payload does not match its exact policy')
     return payload
 
 
 def apply_common_layout(profile, backup, profile_id, bindings):
     return apply_payloads(profile, backup, common_payloads(profile, profile_id, bindings),
-                          profile_id + '-common')
+                          COMMON_POLICY_IDS[profile_id])

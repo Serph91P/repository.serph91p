@@ -44,6 +44,11 @@ for _profile_id in ('arctic', 'amber', 'touch'):
     if _profile_id == 'touch':
         _paths.add('addon_data/skin.estuary.modv2/settings.xml')
     POLICIES[_profile_id + '-common'] = _paths | {_binding}
+# Preserve schema4 touch-common exactly; new family has its own schema5 policy.
+POLICIES['touch-common-v2'] = POLICIES['touch-common'] | {
+    COMMON_SHORTCUTS + 'skin.estuary.modv2-' + name + '.DATA.xml'
+    for name in ('mainmenu','movies','series','twitch','youtube','livetv')}
+COMMON_POLICY_IDS = {'arctic':'arctic-common', 'amber':'amber-common', 'touch':'touch-common-v2'}
 ALL_TARGETS = set().union(*POLICIES.values())
 SAFE_SETTINGS = {
     "homeswitcher.vertical": "true",
@@ -153,7 +158,7 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _merge_skin_settings(existing: bytes | None, settings: dict) -> bytes:
+def _merge_skin_settings(existing: bytes | None, settings: dict, types: dict | None = None) -> bytes:
     if existing is None or not existing.strip():
         root = ET.Element("settings", {"version": "2"})
     else:
@@ -178,7 +183,13 @@ def _merge_skin_settings(existing: bytes | None, settings: dict) -> bytes:
         node = matching[0] if matching else ET.SubElement(root, 'setting', {'id': key})
         for duplicate in matching[1:]:
             root.remove(duplicate)
-        node.set('type', 'bool' if key.startswith('homeswitcher.') else 'string')
+        kind = (types or {}).get(key.lower(), 'bool' if key.startswith('homeswitcher.') else 'string')
+        if kind not in ('bool', 'string') or not isinstance(value, str):
+            raise ValueError('invalid reference setting type')
+        if kind == 'bool' and value not in ('true', 'false', ''):
+            raise ValueError('invalid boolean setting value')
+        node.set('id', key)
+        node.set('type', kind)
         node.text = value
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
@@ -265,7 +276,7 @@ def _apply_stage(profile, backup_dir, stage, policy):
                         "old_sha256": _sha(old) if old is not None else None,
                         "new_sha256": _sha(new), "backup": "files/" + rel if old is not None else None})
     manifest = ({'schema': 1, 'files': entries} if policy == 'arctic'
-                else {'schema': 4 if policy.endswith('-common') else 2, 'profile': policy, 'files': entries})
+                else {'schema': 5 if policy == 'touch-common-v2' else 4 if policy.endswith('-common') else 2, 'profile': policy, 'files': entries})
     backup.mkdir(mode=0o700)
     try:
         for (_, _, old, _), entry in zip(stage, entries):
@@ -314,6 +325,25 @@ def _validate_manifest(profile: Path, backup: Path):
           and manifest['schema'] == 4 and manifest['profile'] in
           ('arctic-common', 'amber-common', 'touch-common')):
         policy = manifest['profile']
+    elif (set(manifest) == {'schema', 'profile', 'files'}
+          and manifest['schema'] == 5 and manifest['profile'] == 'touch-common-v2'):
+        policy = manifest['profile']
+    elif (set(manifest) == {'schema', 'profile', 'files', 'runtime'}
+          and ((manifest['schema'] == 7 and manifest['profile'] in
+                ('arctic-common', 'amber-common', 'touch-common'))
+               or (manifest['schema'] == 8 and manifest['profile'] == 'touch-common-v2'))):
+        policy = manifest['profile']
+        runtime = manifest['runtime']
+        if (not isinstance(runtime, dict) or set(runtime) != {'kind', 'file', 'sha256'}
+            or runtime['kind'] != 'reference-locale' or runtime['file'] != 'reference-locale.json'
+            or not isinstance(runtime['sha256'], str)
+            or not re.fullmatch(r'[0-9a-f]{64}', runtime['sha256'])):
+            raise ValueError('invalid native companion descriptor')
+        companion = backup / 'reference-locale.json'
+        _no_symlink_ancestors(companion)
+        if (not companion.is_file() or companion.stat().st_size > 64 * 1024
+            or _sha(companion.read_bytes()) != runtime['sha256']):
+            raise ValueError('native companion missing or hash mismatch')
     else:
         raise ValueError('invalid manifest schema/profile')
     allowed = POLICIES[policy]

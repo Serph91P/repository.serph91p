@@ -1,6 +1,6 @@
 # Serph91P Kodi Setup Wizard
 
-**0.3.3 development candidate for Kodi 21/Omega. Not released or device-approved.**
+**0.3.4 development candidate for Kodi 21/Omega. Not released or device-approved.**
 
 ## One repository, three profiles
 
@@ -21,11 +21,21 @@ Every profile requests Emby Next Gen, Twitch, YouTube, Gronkh.tv, TubeCast, IPTV
 
 For grouped dependency installation, the candidate additionally provides one fixed native dependency-module ZIP per skin, generated with `python tools/build_setup_bundle.py`. The user explicitly installs the chosen bundle through Kodi Install from ZIP; Kodi resolves its complete dependency graph instead of the wizard issuing InstallAddon per package. Only the chosen skin and its fixed requirements are declared, not all three skins. Repository1.0.1 must already be installed and its catalogs loaded. Bundles contain only addon.xml and an inert module marker, no installer script, security override, credentials, wizard payload or layout changes. This manual candidate bootstrap is not yet a button-integrated published repository bundle and has not been device-validated. Kodi security/dependency-error dialogs and addon login/setup dialogs may remain; zero native dialogs is not promised. Removing the marker is not an automatic rollback of downloaded dependencies; use the agreed fresh test profile.
 
-Candidate flow: keep the normal Estuary skin active; update wizard0.3.3; explicitly install the bundle ZIP matching the chosen skin (`touch` means Estuary MOD V2), wait for Kodi installation to finish, then open the wizard, select that profile and verify the complete addon list before applying its layout. Do not install all three bundles unless all three setups are actually wanted. The dependency bundle does not replace or update the wizard.
+Candidate flow: keep the normal Estuary skin active; update wizard0.3.4; explicitly install the bundle ZIP matching the chosen skin (`touch` means Estuary MOD V2), wait for Kodi installation to finish, then open the wizard, select that profile and verify the complete addon list before applying its layout. Do not install all three bundles unless all three setups are actually wanted. The dependency bundle does not replace or update the wizard.
 
 An installation request or a timeout is never reported as success. Native repository refresh is requested, not falsely claimed complete.
 
-## Sidebar icon correction in0.3.3
+## Current portable reference correction in0.3.4
+
+The current reference was read without changing the source device. Arctic imports275 portable native style/control/icon settings with their real bool/string types, including its settings level, options tiles, colors, background and empty unused-slot toggles. Device-specific node URLs and generated caches are excluded; content bindings stay local. The exact typed locale values were read through Kodi21 Settings.GetSettingValue, including its keyboard-layout list. Layout approval explicitly includes the reference language/region (English, Central Europe). Native Settings.SetSettingValue performs whitelisted changes only, journals preimages before mutation and verifies readback; no active guisettings.xml edits or OS timezone/network/account changes.
+
+MODV2 emits both shared and skin-prefixed user menu families, without changing global shared_menu. Thus it no longer intentionally leaves a configured private menu family absent and falls through to packaged stock menus. Native rebuild/rendering on the user device still requires acceptance; no silent native-dialog confirmation is performed.
+
+## Amber native shelves in0.3.4
+
+Official Omega Amber3.99.02 has doNotShareMenu, so its generated skin.amber-prefixed menus are used regardless of shared_menu. Its six native shelf slots use the unnumbered widget* family and .2 through .6, not invented shelf/resume/recent properties. Ready rows use the same target-local paths as the common media model, video target, native Library/Playlist/Addon source IDs and Poster/Thumb/Square artwork. Unused slots explicitly disable native defaults; deferred Series never substitutes the unfiltered all-TV-shows view. Resume-series rows are episodes with Thumb artwork. This is a source-contract correction, not a claim of real Amber rendering acceptance.
+
+## Previous sidebar icon correction in0.3.3
 
 Arctic now receives the five portable native sidebar icon choices from the supplied reference backup. Exact native consumers and icon files were checked against the official3.3.12 package. Legacy template/backup settings remain unchanged. This is a scoped icon correction, not a claim that full skin/locale migration, MOD-V2 menu consumption or target-device rendering is complete.
 
@@ -46,9 +56,9 @@ After Emby login and sync, reapply the layout using neutral Estuary to select lo
 
 ## Apply and restore
 
-Use neutral **bundled Estuary** while applying/restoring files, then manually select the final skin. No automatic switch, reload or restart. MOD V2 replaces shared `addon_data/script.skinshortcuts/mainmenu.DATA.xml`; confirmation warns that other skins sharing it also see it. Amber's private `skin.amber-*` menus remain separate. Unrelated inactive-skin settings are preserved.
+Use neutral **bundled Estuary** while applying/restoring files, then manually select the final skin. No explicit skin-switch/reload/restart builtin is invoked. Changing language via the supported native setting can cause Kodi itself to reload its UI; the approval warns about this. MOD V2 replaces both shared `addon_data/script.skinshortcuts/mainmenu.DATA.xml` and its skin.estuary.modv2-prefixed family; confirmation warns that other sharing skins are affected. Global sharing preference is preserved. Amber's private `skin.amber-*` menus remain separate. Unrelated inactive-skin settings are preserved.
 
-Each adapter has an exact path policy. Symlink checks, bounded regular files, complete preimages, persisted hash manifests, atomic replacement and readback protect changes. Common layouts use schema 4; legacy schema 1/2/3 backups keep their original validation. Restore refuses user drift. Local backups can contain private preimages and must not be published. No cached favourites, active-skin XML, addon sources or Kodi addon database is edited. This is not a boundary against a hostile concurrent writer in the same profile.
+Each adapter has an exact path policy. Symlink checks, bounded regular files, complete preimages, persisted hash manifests, atomic replacement and readback protect changes. Original common layouts retain exact schema4 policies; dual-family MODV2 uses a separate schema5 policy. Native locale-only backups use schema6, and combined file+native backups use schema7/8 with a required hash-bound locale companion. Original schema1/2/3/4 path shapes retain their validation. Native restore refuses user drift and attempts retry-safe restoration; missing/corrupt native companions never silently become file-only restores. Restore refuses user drift. Local backups can contain private preimages and must not be published. No cached favourites, active-skin XML, addon sources or Kodi addon database is edited. This is not a boundary against a hostile concurrent writer in the same profile.
 
 ## Build and evidence
 

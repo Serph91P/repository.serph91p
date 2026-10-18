@@ -32,6 +32,8 @@ class Surface:
         self.profile, self.selections, self.skin, self.major = profile, iter((profile_index, *selections)), skin, major
         self.commands, self.dialogs, self.settings, self.log = [], [], [], []
         self.progress_events = []
+        from resources.lib.setupwizard.regional import reference
+        self.locale = reference()
         self.touchmode = False
         self.bad_response = False
         self.items = {r.addon_id: {'addonid': r.addon_id, 'enabled': True,
@@ -79,6 +81,12 @@ class Surface:
             result = {'addon': self.items[params['addonid']]}
         elif method == 'Addons.SetAddonEnabled':
             self.items[params['addonid']]['enabled'] = params['enabled']; result = 'OK'
+        elif method == 'Settings.GetSettingValue':
+            result = {'value': self.locale[params['setting']]}
+        elif method == 'Settings.SetSettingValue':
+            self.locale[params['setting']] = params['value']
+            self.commands.append('SetSettingValue('+params['setting']+')')
+            result = True
         else: raise AssertionError('Unsupported RPC: ' + method)
         return json.dumps({'jsonrpc':'2.0','id':1,'result':result})
     @staticmethod

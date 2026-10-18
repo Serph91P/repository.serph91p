@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="script.serph91p.setup" name="Serph91P Setup Wizard" version="0.3.3" provider-name="Serph91P">
+<addon id="script.serph91p.setup" name="Serph91P Setup Wizard" version="0.3.4" provider-name="Serph91P">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="repository.serph91p" version="1.0.1" />

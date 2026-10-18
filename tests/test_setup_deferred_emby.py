@@ -104,7 +104,7 @@ class DeferredEmbyTests(unittest.TestCase):
                 first = root/'setupwizard-backups'/'first'
                 second = root/'setupwizard-backups'/'second'
                 apply_common_layout(root, first, profile, n.empty_bindings())
-                pending = {p:(root/p).read_bytes() for p in c.POLICIES[profile+'-common']}
+                pending = {p:(root/p).read_bytes() for p in c.POLICIES[c.COMMON_POLICY_IDS[profile]]}
                 seed_nodes(root)
                 bindings = n.library_bindings(root, lambda title, options: options.index('Serien') if 'Serien' in options else 0)
                 apply_common_layout(root, second, profile, bindings)
@@ -113,7 +113,7 @@ class DeferredEmbyTests(unittest.TestCase):
                 self.assertEqual(n.load_bindings(root, profile), n.empty_bindings())
                 self.assertTrue(all((root/p).read_bytes() == data for p,data in pending.items()))
                 c.rollback(root, first)
-                self.assertFalse(any((root/p).exists() for p in c.POLICIES[profile+'-common']))
+                self.assertFalse(any((root/p).exists() for p in c.POLICIES[c.COMMON_POLICY_IDS[profile]]))
 
 
 if __name__ == '__main__': unittest.main()

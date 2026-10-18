@@ -20,7 +20,7 @@ def build(output_dir: Path) -> Path:
     root = ElementTree.parse(ROOT / "addon.xml").getroot()
     if root.tag != "addon" or root.attrib.get("id") != ADDON_ID:
         raise ValueError("unexpected add-on identity")
-    if root.attrib.get("version") != "0.3.3":
+    if root.attrib.get("version") != "0.3.4":
         raise ValueError("unexpected add-on version")
     refs = set()
     for node in root.iter():
@@ -38,10 +38,12 @@ def build(output_dir: Path) -> Path:
         'resources/lib/setupwizard/touch.py',
         'resources/lib/setupwizard/navigation.py',
         'resources/lib/setupwizard/common_layouts.py',
+        'resources/lib/setupwizard/regional.py',
         'resources/playlists/top-rated-movies.xsp',
         'resources/playlists/continue-movies.xsp',
         'resources/playlists/continue-episodes.xsp',
         'resources/templates/arctic-fuse-3-minimal.json',
+        'resources/templates/arctic-reference.json',
     }
     files = []
     for rel in sorted(allowed):
@@ -61,7 +63,7 @@ def build(output_dir: Path) -> Path:
     if not {"addon.xml", "default.py"}.issubset(names) or not refs.issubset(names):
         raise ValueError("required source or manifest reference missing")
     output_dir.mkdir(parents=True, exist_ok=True)
-    target = output_dir / "script.serph91p.setup-0.3.3.zip"
+    target = output_dir / "script.serph91p.setup-0.3.4.zip"
     if target.is_symlink() or (target.exists() and not target.is_file()): raise ValueError("package target must be a regular file")
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for rel, path in files:

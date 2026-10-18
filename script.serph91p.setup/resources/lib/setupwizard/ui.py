@@ -155,7 +155,9 @@ def run(argv=None):
                     continue
                 if not dialog.yesno(TITLE, describe_layout(profile_choice.key) +
                     '\nDas Layout lässt sich auch vor der Emby-Anmeldung anwenden. Fehlende persönliche Bibliotheken bleiben als Emby einrichten markiert und können später verknüpft werden. '
-                    'Vorhandene betroffene Dateien werden gesichert. Bei MOD V2 wird das geteilte Skin-Shortcuts-Menü ersetzt. Fortfahren?'):
+                    'Portable Skin-Einstellungen sowie Sprache/Region der Vorlage (English, Central Europe) werden übernommen und gesichert. '
+                    'Bei einer Sprachänderung lädt Kodi seine Oberfläche selbst neu. '
+                    'Bei MOD V2 werden geteilte und private Skin-Shortcuts-Menüs ersetzt; die globale Freigabeeinstellung bleibt unverändert. Fortfahren?'):
                     continue
                 bindings = library_bindings(profile, lambda title, options: dialog.select(title, options))
                 backup_root = profile / 'setupwizard-backups'
@@ -163,10 +165,15 @@ def run(argv=None):
                     raise ValueError('unsafe backup root')
                 backup_root.mkdir(mode=0o700, exist_ok=True)
                 backup = backup_root / uuid4().hex
-                changed = apply_common_layout(profile, backup, profile_choice.key, bindings)
+                file_changes = apply_common_layout(profile, backup, profile_choice.key, bindings)
+                from .regional import apply as apply_region
+                locale_changes = apply_region(profile, backup, api, approved=True)
+                changed = file_changes + locale_changes
                 pending = sum(value is None for value in bindings.values())
                 message = ('Gemeinsames Medienmenü geschrieben, gesichert und zurückgelesen.'
-                           if changed else 'Gemeinsames Medienmenü bereits aktuell; keine Änderung.')
+                           if file_changes else 'Gemeinsames Medienmenü bereits aktuell; keine Dateiänderung.')
+                message += ('\nReferenz-Region übernommen, gesichert und zurückgelesen.' if locale_changes
+                            else '\nReferenz-Region bereits aktuell und zurückgelesen.')
                 if pending:
                     message += ('\nEmby-Verknüpfungen noch offen: ' + str(pending) + '. '
                         'Die markierten Einträge öffnen Emby einrichten; ihre Widgets folgen nach Verknüpfung.'

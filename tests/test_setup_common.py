@@ -115,8 +115,8 @@ class CommonTests(unittest.TestCase):
                 payload=common_payloads(root,profile,b)
                 # Preserve an unrelated value in an inactive skin's settings.
                 changed=apply_common_layout(root,backup,profile,b)
-                self.assertEqual(set(changed), c.POLICIES[profile+'-common'])
-                self.assertEqual(json.loads((backup/c.MANIFEST).read_text())['schema'],4)
+                self.assertEqual(set(changed), c.POLICIES[c.COMMON_POLICY_IDS[profile]])
+                self.assertEqual(json.loads((backup/c.MANIFEST).read_text())['schema'],5 if profile=='touch' else 4)
                 self.assertEqual(apply_common_layout(root,root/'setupwizard-backups'/'noop',profile,b),[])
                 self.assertFalse((root/'setupwizard-backups'/'noop').exists())
                 for path,data in payload.items(): self.assertEqual((root/path).read_bytes(),data)
@@ -146,7 +146,7 @@ class CommonTests(unittest.TestCase):
             with patch.object(c,'_atomic',side_effect=fail), self.assertRaises(OSError):
                 apply_common_layout(root,backup,'touch',b)
             c.rollback(root,backup)
-            self.assertFalse(any((root/path).exists() for path in c.POLICIES['touch-common']))
+            self.assertFalse(any((root/path).exists() for path in c.POLICIES['touch-common-v2']))
 
     def test_common_menu_actual_script_entrypoint(self):
         with tempfile.TemporaryDirectory() as tmp:
