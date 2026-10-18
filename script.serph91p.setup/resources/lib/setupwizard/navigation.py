@@ -121,10 +121,16 @@ def groups(bindings):
             Item('Recommendations', 'plugin://plugin.video.youtube/special/recommendations'),
             Item('My Subscriptions', 'plugin://plugin.video.youtube/special/my_subscriptions'),
             Item('Search', 'plugin://plugin.video.youtube/kodion/search/list/'))),
+        Group('livetv', 'Live TV', (Item('Sender', 'TVChannels', 'window'),
+                                  Item('Programm / EPG', 'TVGuide', 'window'))),
     )
 
 
 def action(item):
+    if item.target == 'window':
+        if item.path not in ('TVChannels', 'TVGuide'):
+            raise ValueError('unsupported utility window')
+        return 'ActivateWindow(' + item.path + ')'
     return 'ActivateWindow(Videos,' + item.path + ',return)'
 
 

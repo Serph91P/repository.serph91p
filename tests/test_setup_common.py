@@ -26,8 +26,8 @@ class CommonTests(unittest.TestCase):
             self.assertIn('tvshows_Serien/recentlyadded', b['series_new'])
             self.assertIn('tvshows_Twitch_VOD/inprogressepisodes', b['twitch_resume'])
             self.assertIn('tvshows_Twitch_VOD/recentlyadded', b['twitch_new'])
-            self.assertEqual([g.label for g in n.groups(b)], ['Movies', 'Series', 'Twitch', 'YouTube'])
-            self.assertEqual([len(g.items) for g in n.groups(b)], [4, 4, 4, 3])
+            self.assertEqual([g.label for g in n.groups(b)], ['Movies', 'Series', 'Twitch', 'YouTube', 'Live TV'])
+            self.assertEqual([len(g.items) for g in n.groups(b)], [4, 4, 4, 3, 2])
 
     def test_missing_sync_or_cancel_has_no_layout_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -90,6 +90,22 @@ class CommonTests(unittest.TestCase):
             self.assertEqual(touchsettings.find('setting').attrib, {'id':'touchmode','type':'bool'})
             self.assertEqual(touchsettings.findtext('setting'), 'true')
             self.assertEqual(list(root.glob('addon_data/**/*')), [])
+
+    def test_native_livetv_is_present_for_all_skins_without_iptv_credentials(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); b=self.fixture(root)
+            af=common_payloads(root,'arctic',b)
+            settings=ET.fromstring(af[c.SKIN_SETTINGS])
+            self.assertEqual(next(x.text for x in settings if x.get('id')=='HomeSwitcher.1107.Toggle'),'true')
+            for profile,prefix in (('amber','skin.amber-'),('touch','')):
+                payload=common_payloads(root,profile,b)
+                main=ET.fromstring(payload['addon_data/script.skinshortcuts/'+prefix+'mainmenu.DATA.xml'])
+                live=next(x for x in main if x.findtext('label')=='Live TV')
+                self.assertEqual(live.findtext('visible'),'System.HasPVRAddon + PVR.HasTVChannels')
+                sub=ET.fromstring(payload['addon_data/script.skinshortcuts/'+prefix+'livetv.DATA.xml'])
+                self.assertEqual([x.findtext('action') for x in sub],['ActivateWindow(TVChannels)','ActivateWindow(TVGuide)'])
+                if profile=='touch':
+                    self.assertEqual(dict(ast.literal_eval(live.findtext('additional-properties')))['widget'],'LiveTVWidget')
 
     def test_all_profiles_backup_noop_restore_and_legacy_isolation(self):
         for profile in n.PROFILE_IDS:

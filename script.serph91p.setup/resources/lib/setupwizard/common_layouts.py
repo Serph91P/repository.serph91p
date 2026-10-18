@@ -30,6 +30,8 @@ def common_payloads(profile, profile_id, bindings):
     payload = {binding_path(profile_id): binding_bytes(bindings)}
     if profile_id == 'arctic':
         settings = dict(SAFE_SETTINGS)
+        # Reference LibreELEC has native PVR slot1107 enabled; Kodi hides it until channels exist.
+        settings['HomeSwitcher.1107.Toggle'] = 'true'
         for slot, group in zip(('home', '1101', '1102', '1103'), media):
             rows = [{'label': item.label, 'icon': '', 'path': item.path, 'target': item.target}
                     for item in group.items]
@@ -50,15 +52,17 @@ def common_payloads(profile, profile_id, bindings):
         for group in media:
             properties = []
             if profile_id == 'touch':
-                properties.append(['widget', 'PersonalWidgetList'])
-                for number, item in enumerate(group.items, 1):
+                properties.append(['widget', 'LiveTVWidget' if group.key == 'livetv' else 'PersonalWidgetList'])
+                for number, item in enumerate(group.items if group.key != 'livetv' else (), 1):
                     aspect = ('135' if item.label == 'Genres' else
                               '31338' if group.key in ('movies', 'series') else '31339')
                     for key, value in (('widgetName', item.label), ('widgetPath', item.path),
                                        ('widgetTarget', item.target), ('widgetAspect', aspect),
                                        ('widgetSortBy', 'none'), ('widgetSortDirection', 'ascending')):
                         properties.append([key + '.' + str(number), value])
-            _shortcut(main, group.label, group_action(group, profile_id), group.key, properties)
+            node = _shortcut(main, group.label, group_action(group, profile_id), group.key, properties)
+            if group.key == 'livetv':
+                ET.SubElement(node, 'visible').text = 'System.HasPVRAddon + PVR.HasTVChannels'
             submenu = ET.Element('shortcuts')
             for index, item in enumerate(group.items):
                 _shortcut(submenu, item.label, action(item), group.key + '-' + str(index))

@@ -40,7 +40,7 @@ for _profile_id in ('arctic', 'amber', 'touch'):
     else:
         _prefix = 'skin.amber-' if _profile_id == 'amber' else ''
         _paths = {COMMON_SHORTCUTS + _prefix + group + '.DATA.xml'
-                  for group in ('mainmenu', 'movies', 'series', 'twitch', 'youtube')}
+                  for group in ('mainmenu', 'movies', 'series', 'twitch', 'youtube', 'livetv')}
     if _profile_id == 'touch':
         _paths.add('addon_data/skin.estuary.modv2/settings.xml')
     POLICIES[_profile_id + '-common'] = _paths | {_binding}

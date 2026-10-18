@@ -24,6 +24,7 @@ All adapters consume one semantic model (`navigation.py`), in this order:
 - **Series:** Fortsetzen, Neu, Top Rated, Genres.
 - **Twitch:** Following Live Channels, Twitch VOD fortsetzen, Neue Twitch VODs, Latest uploads (Gronkh.tv).
 - **YouTube:** Recommendations, My Subscriptions, Search.
+- **Live TV:** Sender and Programm/EPG, visible after the local PVR configuration has channels. Arctic keeps its native PVR slot; the other skins expose equivalent native destinations. IPTV sources are not copied.
 
 Labels, order and destinations are shared; presentation is skin-specific. Utility controls can differ. Content actions also work via fixed program-entrypoint arguments. No credentials, authenticated reference-device paths or raw userdata backups are distributed.
 
