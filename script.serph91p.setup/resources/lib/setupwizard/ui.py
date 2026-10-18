@@ -18,8 +18,10 @@ REPOSITORIES = ('Benötigt Serph91P Repository 1.0.1 oder neuer: Es bindet die Q
     'keine einzelnen Fremd-Repository-ZIPs nötig. IPTV Simple kommt plattformgerecht von Kodi.')
 
 
-def install_with_progress(api, required, dialog, monitor, progress, log):
-    """Count verified add-ons, not download bytes. Background UI permits Kodi prompts."""
+def install_with_progress(api, required, dialog, monitor, progress, log, *, approved=False):
+    """One explicit batch approval; native Kodi dialogs remain interactive."""
+    if approved is not True:
+        return False, "Installation nicht freigegeben."
     current = 'Vorbereitung'
     try:
         progress.create(TITLE, 'Addons werden geprüft ...')
@@ -39,7 +41,7 @@ def install_with_progress(api, required, dialog, monitor, progress, log):
 
             update('Prüfung läuft')
             okay = ensure_requirement(api, req,
-                lambda prompt: dialog.yesno(TITLE, prompt),
+                lambda _prompt: True,  # Fixed allowlisted batch already approved above.
                 lambda item: bounded_wait(api, item, monitor=monitor,
                     on_status=lambda status: update('Warte auf Installation/Aktivierung: ' + status)),
                 report)
@@ -127,7 +129,12 @@ def run(argv=None):
             return
         try:
             if choice == 0:
-                if not dialog.yesno(TITLE, REPOSITORIES + '\n\nBenötigte Addons jetzt prüfen? Einzelne Änderungen werden nochmals bestätigt.'):
+                summary = ('Komplettsetup für ' + profile_choice.label + ':\n'
+                    + ', '.join(item.label for item in required)
+                    + '\n\nQuellen: Serph91P/Jurialmunkey, Emby Beta, Kodinerds und Kodi. '
+                    'Kataloge aktualisieren und diese feste Auswahl inklusive notwendiger Abhängigkeiten installieren/aktivieren? '
+                    'Der Assistent fragt nur einmal. Kodi-eigene Dialoge bleiben bedienbar.')
+                if not dialog.yesno(TITLE, summary, 'Abbrechen', 'Alles installieren'):
                     continue
                 repo_ok, repo_status = check_requirement(api, REPOSITORY_REQUIREMENT)
                 if not repo_ok:
@@ -135,7 +142,7 @@ def run(argv=None):
                     continue
                 xbmc.executebuiltin('UpdateAddonRepos', wait=True)
                 okay, detail = install_with_progress(api, required, dialog, monitor,
-                    xbmcgui.DialogProgressBG(), log)
+                    xbmcgui.DialogProgressBG(), log, approved=True)
                 if monitor.abortRequested():
                     return
                 dialog.ok(TITLE, ('Alle benötigten Addons sind installiert und aktiv. Layout und Anmeldungen bleiben getrennte Schritte.' if okay else

@@ -1,6 +1,6 @@
 # Serph91P Kodi Setup Wizard
 
-**0.3.1 development candidate for Kodi 21/Omega. Not released or device-approved.**
+**0.3.2 development candidate for Kodi 21/Omega. Not released or device-approved.**
 
 ## One repository, three profiles
 
@@ -15,7 +15,15 @@ Profiles:
 - **Amber:** private Skin Shortcuts main menu and content submenus. Same media structure, not an Arctic-style widget clone.
 - **Touch: Estuary MOD V2:** customizable main menu, native personal-widget lists and matching submenus; its own touchmode flag is enabled while inactive. Replaces the old bundled Estuary-touch choice. Legacy touch backups remain restorable.
 
-Every profile requests Emby Next Gen, Twitch, YouTube, Gronkh.tv, TubeCast, IPTV Simple and TMDb Helper. Skin requirements stay profile-scoped. Kodi resolves transitive dependencies and platform binaries. The progress bar counts verified addons, not download bytes, shows the current addon/wait status and closes on success, failure or exception. Native Kodi confirmations stay interactive. An installation request or a timeout is never reported as success. Native repository refresh is requested, not falsely claimed complete.
+Every profile requests Emby Next Gen, Twitch, YouTube, Gronkh.tv, TubeCast, IPTV Simple and TMDb Helper. Skin requirements stay profile-scoped. Kodi resolves transitive dependencies and platform binaries. The progress bar counts verified addons, not download bytes, shows the current addon/wait status and closes on success, failure or exception. The wizard shows the complete profile-scoped list once and asks for one batch approval; it does not repeat its own question for each addon. A declined or missing batch approval causes no refresh, install or enable request. Native Kodi confirmations stay interactive: Omega InstallAddon hardcodes InstallModalPrompt::CHOICE_YES, so every newly installed addon can still trigger Kodi's own prompt. No native dialogs are automatically accepted or safety settings changed.
+
+### Grouped native installation candidate
+
+For grouped dependency installation, the candidate additionally provides one fixed native dependency-module ZIP per skin, generated with `python tools/build_setup_bundle.py`. The user explicitly installs the chosen bundle through Kodi Install from ZIP; Kodi resolves its complete dependency graph instead of the wizard issuing InstallAddon per package. Only the chosen skin and its fixed requirements are declared, not all three skins. Repository1.0.1 must already be installed and its catalogs loaded. Bundles contain only addon.xml and an inert module marker, no installer script, security override, credentials, wizard payload or layout changes. This manual candidate bootstrap is not yet a button-integrated published repository bundle and has not been device-validated. Kodi security/dependency-error dialogs and addon login/setup dialogs may remain; zero native dialogs is not promised. Removing the marker is not an automatic rollback of downloaded dependencies; use the agreed fresh test profile.
+
+Candidate flow: keep the normal Estuary skin active; update wizard0.3.2; explicitly install the bundle ZIP matching the chosen skin (`touch` means Estuary MOD V2), wait for Kodi installation to finish, then open the wizard, select that profile and verify the complete addon list before applying its layout. Do not install all three bundles unless all three setups are actually wanted. The dependency bundle does not replace or update the wizard.
+
+An installation request or a timeout is never reported as success. Native repository refresh is requested, not falsely claimed complete.
 
 ## Shared LibreELEC-reference structure
 

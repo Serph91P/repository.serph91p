@@ -161,16 +161,16 @@ class WizardTests(unittest.TestCase):
             types.SimpleNamespace(yesno=lambda *args: False), s.modules['xbmc'].Monitor(),
             s.modules['xbmcgui'].DialogProgressBG(), lambda _: None)
         self.assertFalse(okay)
-        self.assertIn('Arctic Fuse 3', detail)
+        self.assertIn('nicht freigegeben', detail)
         self.assertEqual(s.commands, [])
-        self.assertEqual(s.progress_events[-1], ('close',))
+        self.assertEqual(s.progress_events, [])
 
     def test_progress_shutdown_stops_before_install(self):
         from resources.lib.setupwizard.ui import install_with_progress
         s = Surface(Path('.'), ready=False)
         okay, _ = install_with_progress(KodiAddonAPI(s.modules['xbmc']), REQUIREMENTS,
             s.modules['xbmcgui'].Dialog(), types.SimpleNamespace(abortRequested=lambda: True),
-            s.modules['xbmcgui'].DialogProgressBG(), lambda _: None)
+            s.modules['xbmcgui'].DialogProgressBG(), lambda _: None, approved=True)
         self.assertFalse(okay)
         self.assertEqual(s.commands, [])
         self.assertEqual(s.progress_events[-1], ('close',))
