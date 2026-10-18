@@ -1,7 +1,7 @@
 """Skin-specific adapters for the single LibreELEC-reference media menu."""
 import json
 from xml.etree import ElementTree as ET
-from .config import (SKIN_NODE, SKIN_SETTINGS, SAFE_SETTINGS, POLICIES,
+from .config import (SKIN_NODE, SKIN_SETTINGS, SAFE_SETTINGS, ARCTIC_REFERENCE_ICONS, POLICIES,
                      _profile, _target, _merge_skin_settings, apply_payloads)
 from .navigation import groups, action, group_action, binding_path, binding_bytes
 
@@ -30,6 +30,7 @@ def common_payloads(profile, profile_id, bindings):
     payload = {binding_path(profile_id): binding_bytes(bindings)}
     if profile_id == 'arctic':
         settings = dict(SAFE_SETTINGS)
+        settings.update(ARCTIC_REFERENCE_ICONS)
         # Reference LibreELEC has native PVR slot1107 enabled; Kodi hides it until channels exist.
         settings['HomeSwitcher.1107.Toggle'] = 'true'
         for slot, group in zip(('home', '1101', '1102', '1103'), media):

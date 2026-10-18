@@ -66,6 +66,16 @@ SAFE_SETTINGS = {
     "HomeSwitcher.1103.Toggle": "true",
 }
 
+# Keep legacy SAFE_SETTINGS/template validation unchanged for old backups.
+# Portable sidebar choices from the supplied LibreELEC reference, AF3 3.3.12.
+ARCTIC_REFERENCE_ICONS = {
+    "HomeSwitcher.Home.Icon": "special://skin/extras/icons/film.png",
+    "HomeSwitcher.1101.Icon": "special://skin/extras/icons/director.png",
+    "HomeSwitcher.1102.Icon": "special://skin/extras/icons/twitch.png",
+    "HomeSwitcher.1103.Icon": "special://skin/extras/icons/youtube.png",
+    "HomeSwitcher.1104.Icon": "special://skin/extras/icons/folder.png",
+}
+
 class LayoutConflict(ValueError):
     """The on-disk configuration no longer matches the staged transaction."""
 

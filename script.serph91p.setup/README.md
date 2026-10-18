@@ -1,6 +1,6 @@
 # Serph91P Kodi Setup Wizard
 
-**0.3.2 development candidate for Kodi 21/Omega. Not released or device-approved.**
+**0.3.3 development candidate for Kodi 21/Omega. Not released or device-approved.**
 
 ## One repository, three profiles
 
@@ -21,9 +21,13 @@ Every profile requests Emby Next Gen, Twitch, YouTube, Gronkh.tv, TubeCast, IPTV
 
 For grouped dependency installation, the candidate additionally provides one fixed native dependency-module ZIP per skin, generated with `python tools/build_setup_bundle.py`. The user explicitly installs the chosen bundle through Kodi Install from ZIP; Kodi resolves its complete dependency graph instead of the wizard issuing InstallAddon per package. Only the chosen skin and its fixed requirements are declared, not all three skins. Repository1.0.1 must already be installed and its catalogs loaded. Bundles contain only addon.xml and an inert module marker, no installer script, security override, credentials, wizard payload or layout changes. This manual candidate bootstrap is not yet a button-integrated published repository bundle and has not been device-validated. Kodi security/dependency-error dialogs and addon login/setup dialogs may remain; zero native dialogs is not promised. Removing the marker is not an automatic rollback of downloaded dependencies; use the agreed fresh test profile.
 
-Candidate flow: keep the normal Estuary skin active; update wizard0.3.2; explicitly install the bundle ZIP matching the chosen skin (`touch` means Estuary MOD V2), wait for Kodi installation to finish, then open the wizard, select that profile and verify the complete addon list before applying its layout. Do not install all three bundles unless all three setups are actually wanted. The dependency bundle does not replace or update the wizard.
+Candidate flow: keep the normal Estuary skin active; update wizard0.3.3; explicitly install the bundle ZIP matching the chosen skin (`touch` means Estuary MOD V2), wait for Kodi installation to finish, then open the wizard, select that profile and verify the complete addon list before applying its layout. Do not install all three bundles unless all three setups are actually wanted. The dependency bundle does not replace or update the wizard.
 
 An installation request or a timeout is never reported as success. Native repository refresh is requested, not falsely claimed complete.
+
+## Sidebar icon correction in0.3.3
+
+Arctic now receives the five portable native sidebar icon choices from the supplied reference backup. Exact native consumers and icon files were checked against the official3.3.12 package. Legacy template/backup settings remain unchanged. This is a scoped icon correction, not a claim that full skin/locale migration, MOD-V2 menu consumption or target-device rendering is complete.
 
 ## Shared LibreELEC-reference structure
 
@@ -53,7 +57,10 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_setup*.
 python3 tools/validate_setup_sources.py --report /your/task-workspace/sources.json
 python3 tools/build_setup_repository.py --output-dir dist
 python3 tools/build_setup_addon.py --output-dir dist
+python3 tools/build_setup_bundle.py --output-dir dist
 ```
+
+Bundle ZIPs are generated artifacts, intentionally not checked into Git. For this unpublished candidate, distribute the chosen profile ZIP directly alongside the wizard ZIP; a source checkout can reproduce it with the command above. Repository catalog/button integration is a separate open publication step.
 
 Builders have fixed member allowlists and repeatable timestamps. Packages exclude tests, docs, caches, local bindings, backups and credentials. Tests emulate supported Kodi module surfaces, not real rendering or installation. Compare the full suite against an untouched baseline; do not weaken unrelated date-sensitive publication fixtures.
 
