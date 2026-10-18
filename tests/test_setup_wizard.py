@@ -21,6 +21,7 @@ class Surface:
     def __init__(self, profile, selections=(), ready=True, skin='skin.estuary', major=21, profile_index=0):
         self.profile, self.selections, self.skin, self.major = profile, iter((profile_index, *selections)), skin, major
         self.commands, self.dialogs, self.settings, self.log = [], [], [], []
+        self.progress_events = []
         self.touchmode = False
         self.bad_response = False
         self.items = {r.addon_id: {'addonid': r.addon_id, 'enabled': True,
@@ -34,6 +35,10 @@ class Surface:
             def yesno(self, *args): return True
             def ok(self, *args): surface.dialogs.append(args)
             def textviewer(self, *args): surface.dialogs.append(args)
+        class DialogProgressBG:
+            def create(self, heading, message=""): surface.progress_events.append(("create", heading, message))
+            def update(self, percent=0, heading="", message=""): surface.progress_events.append(("update", percent, heading, message))
+            def close(self): surface.progress_events.append(("close",))
         class Addon:
             def __init__(self, addon_id=None): self.addon_id = addon_id
             def openSettings(self): surface.settings.append(self.addon_id)
@@ -43,7 +48,7 @@ class Surface:
                 getCondVisibility=self.condition,
                 LOGINFO=1, log=lambda message, level: self.log.append(message)),
             'xbmcaddon': types.SimpleNamespace(Addon=Addon),
-            'xbmcgui': types.SimpleNamespace(Dialog=Dialog),
+            'xbmcgui': types.SimpleNamespace(Dialog=Dialog, DialogProgressBG=DialogProgressBG),
             'xbmcvfs': types.SimpleNamespace(translatePath=self.translate),
         }
     def translate(self, path):
@@ -100,6 +105,67 @@ class WizardTests(unittest.TestCase):
             self.assertEqual(len(s.commands), len(REQUIREMENTS + MEDIA_REQUIREMENTS))
             self.assertFalse(any('Restart' in x or 'Reload' in x or 'Skin.SetSkin' in x for x in s.commands))
             self.assertTrue(any('Alle benötigten Addons' in str(x) for x in s.dialogs))
+    def test_progress_tracks_verified_addons_and_closes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            s = Surface(Path(tmp), [0, 6], ready=False); s.run()
+            events = s.progress_events
+            self.assertEqual(events[0][0], 'create')
+            self.assertEqual(events[-1], ('close',))
+            updates = [e for e in events if e[0] == 'update']
+            self.assertEqual(updates[0][1], 0)
+            self.assertEqual(updates[-1][1], 100)
+            self.assertEqual([e[1] for e in updates], sorted(e[1] for e in updates))
+            self.assertTrue(any('Warte auf Installation' in e[3] for e in updates))
+            for req in REQUIREMENTS + MEDIA_REQUIREMENTS:
+                self.assertTrue(any(req.label in e[3] for e in updates))
+
+    def test_progress_failure_closes_and_names_addon(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            s = Surface(Path(tmp), [0, 6], ready=False)
+            s.modules['xbmc'].executebuiltin = lambda command: None
+            s.run()
+            self.assertEqual(s.progress_events[-1], ('close',))
+            self.assertFalse(any(e[0] == 'update' and e[1] == 100 for e in s.progress_events))
+            self.assertTrue(any('Einrichtung unvollständig. Arctic Fuse 3' in str(x) for x in s.dialogs))
+            self.assertFalse(any('Alle benötigten Addons' in str(x) for x in s.dialogs))
+
+    def test_progress_exception_always_closes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            s = Surface(Path(tmp), [0, 6])
+            with patch('resources.lib.setupwizard.ui.ensure_requirement', side_effect=RuntimeError):
+                s.run()
+            self.assertEqual(s.progress_events[-1], ('close',))
+            self.assertTrue(any('Vorgang nicht abgeschlossen' in str(x) for x in s.dialogs))
+
+    def test_progress_rejected_confirmation_no_install(self):
+        from resources.lib.setupwizard.ui import install_with_progress
+        s = Surface(Path('.'), ready=False)
+        okay, detail = install_with_progress(KodiAddonAPI(s.modules['xbmc']), REQUIREMENTS,
+            types.SimpleNamespace(yesno=lambda *args: False), s.modules['xbmc'].Monitor(),
+            s.modules['xbmcgui'].DialogProgressBG(), lambda _: None)
+        self.assertFalse(okay)
+        self.assertIn('Arctic Fuse 3', detail)
+        self.assertEqual(s.commands, [])
+        self.assertEqual(s.progress_events[-1], ('close',))
+
+    def test_progress_shutdown_stops_before_install(self):
+        from resources.lib.setupwizard.ui import install_with_progress
+        s = Surface(Path('.'), ready=False)
+        okay, _ = install_with_progress(KodiAddonAPI(s.modules['xbmc']), REQUIREMENTS,
+            s.modules['xbmcgui'].Dialog(), types.SimpleNamespace(abortRequested=lambda: True),
+            s.modules['xbmcgui'].DialogProgressBG(), lambda _: None)
+        self.assertFalse(okay)
+        self.assertEqual(s.commands, [])
+        self.assertEqual(s.progress_events[-1], ('close',))
+
+    def test_wait_reports_each_poll(self):
+        s = Surface(Path('.'), ready=False)
+        ticks, statuses = [0], []
+        self.assertFalse(bounded_wait(KodiAddonAPI(s.modules['xbmc']), REQUIREMENTS[0],
+            timeout=2, clock=lambda: ticks[0], sleep=lambda n: ticks.__setitem__(0, ticks[0] + n),
+            on_status=statuses.append))
+        self.assertEqual(statuses, ['nicht installiert'] * 3)
+
     def test_default_layout_apply_and_restore_route(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

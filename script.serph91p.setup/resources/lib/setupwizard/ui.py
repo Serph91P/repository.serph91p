@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 from .addons import (REQUIREMENTS, PROFILE_REQUIREMENTS, MEDIA_REQUIREMENTS, KodiAddonAPI,
-                     bounded_wait, check_requirement, install_selected)
+                     bounded_wait, check_requirement, ensure_requirement)
 from .config import apply_template, rollback, MANIFEST
 from .templates import minimal_layout_template, describe_template
 from .profiles import PROFILES, requirements_for
@@ -17,6 +17,40 @@ REPOSITORIES = (
     'Fehlt eine Quelle, diese zuerst über Kodis Addon-Verwaltung installieren. '
     'Der Assistent lädt keine fremden ZIPs nach.'
 )
+
+
+def install_with_progress(api, required, dialog, monitor, progress, log):
+    """Count verified add-ons, not download bytes. Background UI permits Kodi prompts."""
+    current = 'Vorbereitung'
+    try:
+        progress.create(TITLE, 'Addons werden geprüft ...')
+        total = len(required)
+        for index, req in enumerate(required):
+            current = req.label
+            if monitor.abortRequested():
+                return False, current + ': Kodi beendet den Vorgang.'
+
+            def update(status):
+                progress.update(int(index * 100 / total), TITLE,
+                    '{}/{} geprüft | {}: {}'.format(index, total, current, status))
+
+            def report(message):
+                log(message)
+                update(message)
+
+            update('Prüfung läuft')
+            okay = ensure_requirement(api, req,
+                lambda prompt: dialog.yesno(TITLE, prompt),
+                lambda item: bounded_wait(api, item, monitor=monitor,
+                    on_status=lambda status: update('Warte auf Installation/Aktivierung: ' + status)),
+                report)
+            if not okay:
+                return False, current + ': nicht abgeschlossen (abgelehnt, fehlgeschlagen oder Zeitlimit).'
+            progress.update(int((index + 1) * 100 / total), TITLE,
+                '{}/{} geprüft | {}: installiert und aktiv'.format(index + 1, total, current))
+        return True, ''
+    finally:
+        progress.close()
 
 
 def run():
@@ -68,11 +102,12 @@ def run():
             if choice == 0:
                 if not dialog.yesno(TITLE, REPOSITORIES + '\n\nBenötigte Addons jetzt prüfen? Einzelne Änderungen werden nochmals bestätigt.'):
                     continue
-                okay = install_selected(api, required,
-                    lambda prompt: dialog.yesno(TITLE, prompt),
-                    lambda req: bounded_wait(api, req, monitor=monitor), log)
+                okay, detail = install_with_progress(api, required, dialog, monitor,
+                    xbmcgui.DialogProgressBG(), log)
+                if monitor.abortRequested():
+                    return
                 dialog.ok(TITLE, ('Alle benötigten Addons sind installiert und aktiv. Layout und Anmeldungen bleiben getrennte Schritte.' if okay else
-                    'Einrichtung unvollständig. Ein Addon fehlt, ist deaktiviert, inkompatibel oder wurde nicht rechtzeitig installiert.\n' + REPOSITORIES))
+                    'Einrichtung unvollständig. ' + detail + '\n' + REPOSITORIES))
             elif choice == 1:
                 if not profile_choice.layout_supported:
                     dialog.ok(TITLE, 'Für ' + profile_choice.label + ' bietet dieser Assistent kein Layout an. Bitte die skin-eigenen Einstellungen verwenden; Arctic-Fuse-Dateien werden nicht geschrieben.')

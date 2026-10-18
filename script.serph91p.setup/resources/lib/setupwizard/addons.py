@@ -120,10 +120,14 @@ def check_requirement(api, requirement):
 
 
 def bounded_wait(api, requirement, monitor=None, timeout=90, interval=1,
-                 clock=time.monotonic, sleep=time.sleep):
+                 clock=time.monotonic, sleep=time.sleep, on_status=None):
     deadline = clock() + max(0, timeout)
     while True:
+        if monitor is not None and monitor.abortRequested():
+            return False
         okay, status = check_requirement(api, requirement)
+        if on_status is not None:
+            on_status(status)
         if okay:
             return True
         if status == 'API-Fehler':

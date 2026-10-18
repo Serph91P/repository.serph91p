@@ -1,6 +1,8 @@
 # Serph91P Kodi Setup Wizard
 
-**Version 0.2.0: local Kodi 21/Omega candidate, not a repository release or device-approved setup.**
+**Version 0.2.1: local Kodi 21/Omega candidate, not a repository release or device-approved setup.**
+
+Installation now shows a background progress bar with the current add-on, its status and the number of verified add-ons. Percentages count successfully verified add-ons, not downloaded bytes. Kodi's own confirmations remain interactive. Waiting is bounded to 90 seconds per requested add-on; incomplete setup names the add-on and never reports overall success. The progress dialog closes on success, failure and exceptions. Actual visibility on Android still requires device acceptance.
 
 ## Skin choice and actual layout coverage
 

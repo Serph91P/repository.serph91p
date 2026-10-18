@@ -20,7 +20,7 @@ def build(output_dir: Path) -> Path:
     root = ElementTree.parse(ROOT / "addon.xml").getroot()
     if root.tag != "addon" or root.attrib.get("id") != ADDON_ID:
         raise ValueError("unexpected add-on identity")
-    if root.attrib.get("version") != "0.2.0":
+    if root.attrib.get("version") != "0.2.1":
         raise ValueError("unexpected add-on version")
     refs = set()
     for node in root.iter():
@@ -58,7 +58,7 @@ def build(output_dir: Path) -> Path:
     if not {"addon.xml", "default.py"}.issubset(names) or not refs.issubset(names):
         raise ValueError("required source or manifest reference missing")
     output_dir.mkdir(parents=True, exist_ok=True)
-    target = output_dir / "script.serph91p.setup-0.2.0.zip"
+    target = output_dir / "script.serph91p.setup-0.2.1.zip"
     if target.is_symlink() or (target.exists() and not target.is_file()): raise ValueError("package target must be a regular file")
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for rel, path in files:
