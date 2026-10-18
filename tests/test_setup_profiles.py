@@ -16,13 +16,13 @@ class ProfileTests(unittest.TestCase):
         by_key = {p.key: p for p in PROFILES}
         self.assertEqual(by_key['amber'].minimum, (3, 99, 2))
         self.assertTrue(by_key['amber'].layout_supported)
-        self.assertEqual(by_key['touch'].minimum, (4, 0, 0))
+        self.assertEqual(by_key['touch'].minimum, (21, 4))
         self.assertTrue(by_key['touch'].layout_supported)
-        self.assertIn('2024', by_key['touch'].warning)
+        self.assertEqual(by_key['touch'].addon_id, 'skin.estuary.modv2')
         amber = requirements_for(by_key['amber'], REQUIREMENTS, PROFILE_REQUIREMENTS, MEDIA_REQUIREMENTS)
         self.assertEqual([r.addon_id for r in amber], ['skin.amber'] + [r.addon_id for r in MEDIA_REQUIREMENTS])
         touch = requirements_for(by_key['touch'], REQUIREMENTS, PROFILE_REQUIREMENTS, MEDIA_REQUIREMENTS)
-        self.assertEqual([r.addon_id for r in touch], ['skin.estuary'] + [r.addon_id for r in MEDIA_REQUIREMENTS])
+        self.assertEqual([r.addon_id for r in touch], ['skin.estuary.modv2'] + [r.addon_id for r in MEDIA_REQUIREMENTS])
         self.assertNotIn('script.skinvariables', [r.addon_id for r in touch])
 
     def test_shared_media_addons_are_allowlisted(self):
@@ -41,7 +41,7 @@ class ProfileTests(unittest.TestCase):
             surface = Surface(Path(tmp), [0, 6], ready=False, profile_index=1)
             surface.run()
             installed = set(surface.items)
-            expected = {'skin.amber'} | {r.addon_id for r in MEDIA_REQUIREMENTS}
+            expected = {'skin.amber', 'repository.serph91p'} | {r.addon_id for r in MEDIA_REQUIREMENTS}
             self.assertEqual(installed, expected)
             self.assertNotIn('skin.arctic.fuse.3', installed)
             self.assertNotIn('script.skinvariables', installed)

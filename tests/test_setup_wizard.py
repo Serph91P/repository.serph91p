@@ -15,10 +15,20 @@ ADDON = Path(__file__).resolve().parents[1] / 'script.serph91p.setup'
 sys.path.insert(0, str(ADDON))
 from resources.lib.setupwizard.addons import (ALL_REQUIREMENTS, REQUIREMENTS, MEDIA_REQUIREMENTS,
     KodiAddonAPI, bounded_wait, check_requirement, ensure_requirement,
-    version_at_least)
+    version_at_least, REPOSITORY_REQUIREMENT)
+
+def seed_nodes(root):
+    for label in ('Serien', 'Twitch_VOD'):
+        for prefix, names in (('emby_dynamic_tvshows_', ('resume_episode.xml',)),
+                              ('emby_tvshows_', ('inprogressepisodes.xml', 'recentlyadded.xml', 'genres.xml'))):
+            folder = root / 'library/video' / (prefix + label)
+            folder.mkdir(parents=True, exist_ok=True)
+            for name in names:
+                (folder / name).write_text('<node/>')
+
 
 class Surface:
-    def __init__(self, profile, selections=(), ready=True, skin='skin.estuary', major=21, profile_index=0):
+    def __init__(self, profile, selections=(), ready=True, skin='skin.estuary', major=21, profile_index=0, repo_ready=True):
         self.profile, self.selections, self.skin, self.major = profile, iter((profile_index, *selections)), skin, major
         self.commands, self.dialogs, self.settings, self.log = [], [], [], []
         self.progress_events = []
@@ -26,6 +36,9 @@ class Surface:
         self.bad_response = False
         self.items = {r.addon_id: {'addonid': r.addon_id, 'enabled': True,
             'version': '.'.join(map(str, r.min_version))} for r in ALL_REQUIREMENTS} if ready else {}
+        if repo_ready:
+            r = REPOSITORY_REQUIREMENT
+            self.items[r.addon_id] = {'addonid': r.addon_id, 'enabled': True, 'version': '1.0.1'}
         surface = self
         class Monitor:
             def abortRequested(self): return False
@@ -85,10 +98,12 @@ class Surface:
             addon_id = command[len('InstallAddon('):-1]
             req = next(r for r in ALL_REQUIREMENTS if r.addon_id == addon_id)
             self.items[addon_id] = {'addonid':addon_id, 'enabled': True, 'version': '.'.join(map(str,req.min_version))}
+        elif command == 'UpdateAddonRepos':
+            pass
         elif not command.startswith('ActivateWindow('):
             raise AssertionError('Unsupported builtin: ' + command)
-    def run(self):
-        with patch.dict(sys.modules, self.modules):
+    def run(self, argv=()):
+        with patch.dict(sys.modules, self.modules), patch.object(sys, 'argv', [str(ADDON/'default.py'), *argv]):
             runpy.run_path(str(ADDON / 'default.py'), run_name='__main__')
 
 class WizardTests(unittest.TestCase):
@@ -101,8 +116,8 @@ class WizardTests(unittest.TestCase):
     def test_actual_module_surface_default_to_install_all(self):
         with tempfile.TemporaryDirectory() as tmp:
             s = Surface(Path(tmp), [0,6], ready=False); s.run()
-            self.assertEqual(set(s.items), {r.addon_id for r in REQUIREMENTS + MEDIA_REQUIREMENTS})
-            self.assertEqual(len(s.commands), len(REQUIREMENTS + MEDIA_REQUIREMENTS))
+            self.assertEqual(set(s.items), {r.addon_id for r in REQUIREMENTS + MEDIA_REQUIREMENTS} | {REPOSITORY_REQUIREMENT.addon_id})
+            self.assertEqual(len(s.commands), 1 + len(REQUIREMENTS + MEDIA_REQUIREMENTS))
             self.assertFalse(any('Restart' in x or 'Reload' in x or 'Skin.SetSkin' in x for x in s.commands))
             self.assertTrue(any('Alle benötigten Addons' in str(x) for x in s.dialogs))
     def test_progress_tracks_verified_addons_and_closes(self):
@@ -122,7 +137,7 @@ class WizardTests(unittest.TestCase):
     def test_progress_failure_closes_and_names_addon(self):
         with tempfile.TemporaryDirectory() as tmp:
             s = Surface(Path(tmp), [0, 6], ready=False)
-            s.modules['xbmc'].executebuiltin = lambda command: None
+            s.modules['xbmc'].executebuiltin = lambda command, wait=False: None
             s.run()
             self.assertEqual(s.progress_events[-1], ('close',))
             self.assertFalse(any(e[0] == 'update' and e[1] == 100 for e in s.progress_events))
@@ -169,8 +184,9 @@ class WizardTests(unittest.TestCase):
     def test_default_layout_apply_and_restore_route(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            s = Surface(root, [1,3,0,6]); s.run()
-            self.assertTrue(any('Layout geschrieben' in str(x) for x in s.dialogs))
+            seed_nodes(root)
+            s = Surface(root, [1,0,0,3,0,6]); s.run()
+            self.assertTrue(any('Medienmenü geschrieben' in str(x) for x in s.dialogs))
             self.assertTrue(any('wiederhergestellt' in str(x) for x in s.dialogs))
             self.assertFalse((root / 'userdata').exists())
             self.assertFalse(any(root.glob('addon_data/**/*.json')))

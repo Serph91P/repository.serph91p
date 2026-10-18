@@ -10,7 +10,7 @@ from unittest.mock import patch
 ADDON = Path(__file__).resolve().parents[1] / 'script.serph91p.setup'
 sys.path.insert(0, str(ADDON))
 from resources.lib.setupwizard import config, layouts, touch
-from tests.test_setup_wizard import Surface
+from tests.test_setup_wizard import Surface, seed_nodes
 
 
 class LayoutProfileTests(unittest.TestCase):
@@ -69,7 +69,8 @@ class LayoutProfileTests(unittest.TestCase):
     def test_amber_entrypoint_layout_and_restore(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            surface = Surface(root, [1, 3, 0, 6], profile_index=1)
+            seed_nodes(root)
+            surface = Surface(root, [1, 0, 0, 3, 0, 6], profile_index=1)
             surface.run()
             self.assertFalse((root/config.AMBER_MENU).exists())
             self.assertTrue(any('wiederhergestellt' in str(x) for x in surface.dialogs))
@@ -77,9 +78,12 @@ class LayoutProfileTests(unittest.TestCase):
 
     def test_touch_entrypoint_apply_and_restore(self):
         with tempfile.TemporaryDirectory() as tmp:
-            surface = Surface(Path(tmp), [1, 3, 0, 6], profile_index=2)
+            seed_nodes(Path(tmp))
+            surface = Surface(Path(tmp), [1, 0, 0, 3, 0, 6], profile_index=2)
             surface.run()
-            self.assertEqual(surface.commands, ['Skin.SetBool(touchmode)', 'Skin.Reset(touchmode)'])
+            self.assertTrue(any('Medienmenü geschrieben' in str(x) for x in surface.dialogs))
+            self.assertTrue(any('wiederhergestellt' in str(x) for x in surface.dialogs))
+            self.assertEqual(surface.commands, [])
             self.assertFalse(surface.touchmode)
             self.assertFalse((Path(tmp)/config.SKIN_SETTINGS).exists())
 
@@ -133,7 +137,7 @@ class LayoutProfileTests(unittest.TestCase):
 
     def test_shared_navigation_entrypoint(self):
         with tempfile.TemporaryDirectory() as tmp:
-            surface = Surface(Path(tmp), [7, 0, 6], profile_index=2)
+            surface = Surface(Path(tmp), [7, 4, 6], profile_index=2)
             surface.run()
             self.assertEqual(surface.commands, [layouts.NAVIGATION[0][1]])
 

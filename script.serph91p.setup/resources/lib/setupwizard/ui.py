@@ -4,19 +4,18 @@ from pathlib import Path
 from uuid import uuid4
 from .addons import (REQUIREMENTS, PROFILE_REQUIREMENTS, MEDIA_REQUIREMENTS, KodiAddonAPI,
                      bounded_wait, check_requirement, ensure_requirement)
-from .config import apply_template, rollback, MANIFEST
-from .templates import minimal_layout_template, describe_template
+from .config import MANIFEST
+from .common_layouts import apply_common_layout
+from .navigation import library_bindings, load_bindings, groups, action
+from .addons import REPOSITORY_REQUIREMENT
+from .layouts import describe_layout
 from .profiles import PROFILES, requirements_for
 
 TITLE = 'Serph91P Kodi Setup'
-REPOSITORIES = (
-    'Arctic Fuse: repository.jurialmunkey (Omega). '
-    'Emby: repository.beta.emby.kodi für Kodi 21. '
-    'Twitch/Gronkh: repository.serph91p. '
-    'YouTube: ein kompatibles YouTube-/Kodi-Repository. '
-    'Fehlt eine Quelle, diese zuerst über Kodis Addon-Verwaltung installieren. '
-    'Der Assistent lädt keine fremden ZIPs nach.'
-)
+REPOSITORIES = ('Benötigt Serph91P Repository 1.0.1 oder neuer: Es bindet die Quellen '
+    'für Arctic, Emby Next Gen Beta und Estuary MOD V2 nativ ein. '
+    'Im Teststand das beigefügte Repository-ZIP einmal installieren/aktualisieren; '
+    'keine einzelnen Fremd-Repository-ZIPs nötig. IPTV Simple kommt plattformgerecht von Kodi.')
 
 
 def install_with_progress(api, required, dialog, monitor, progress, log):
@@ -53,12 +52,40 @@ def install_with_progress(api, required, dialog, monitor, progress, log):
         progress.close()
 
 
-def run():
+def open_group(argv, xbmc, xbmcgui, xbmcvfs):
+    from .navigation import PROFILE_IDS
+    params = {}
+    for value in argv:
+        if '=' not in value:
+            raise ValueError('unknown script argument')
+        key, val = value.split('=', 1)
+        if key in params or key not in ('group', 'profile'):
+            raise ValueError('unknown script argument')
+        params[key] = val
+    if set(params) != {'group', 'profile'} or params['profile'] not in PROFILE_IDS:
+        raise ValueError('invalid content menu arguments')
+    profile = Path(xbmcvfs.translatePath('special://profile'))
+    media = groups(load_bindings(profile, params['profile']))
+    group = next((g for g in media if g.key == params['group']), None)
+    if group is None:
+        raise ValueError('unknown content group')
+    choice = xbmcgui.Dialog().select(group.label, [i.label for i in group.items])
+    if 0 <= choice < len(group.items):
+        xbmc.executebuiltin(action(group.items[choice]))
+
+
+def run(argv=None):
     import xbmc
     import xbmcaddon
     import xbmcgui
     import xbmcvfs
     dialog, api, monitor = xbmcgui.Dialog(), KodiAddonAPI(xbmc), xbmc.Monitor()
+    if argv:
+        try:
+            open_group(argv, xbmc, xbmcgui, xbmcvfs)
+        except Exception as exc:
+            dialog.ok(TITLE, 'Inhalte nicht geöffnet: ' + str(exc))
+        return
     try:
         if api.major_version() != 21:
             dialog.ok(TITLE, 'Dieser Kandidat ist auf Kodi 21/Omega begrenzt. Andere Kodi-Versionen sind noch nicht geprüft. Es wurde nichts geändert.')
@@ -102,6 +129,11 @@ def run():
             if choice == 0:
                 if not dialog.yesno(TITLE, REPOSITORIES + '\n\nBenötigte Addons jetzt prüfen? Einzelne Änderungen werden nochmals bestätigt.'):
                     continue
+                repo_ok, repo_status = check_requirement(api, REPOSITORY_REQUIREMENT)
+                if not repo_ok:
+                    dialog.ok(TITLE, 'Setup-Quellen fehlen oder sind nicht bereit: ' + repo_status + '\n' + REPOSITORIES)
+                    continue
+                xbmc.executebuiltin('UpdateAddonRepos', wait=True)
                 okay, detail = install_with_progress(api, required, dialog, monitor,
                     xbmcgui.DialogProgressBG(), log)
                 if monitor.abortRequested():
@@ -109,37 +141,25 @@ def run():
                 dialog.ok(TITLE, ('Alle benötigten Addons sind installiert und aktiv. Layout und Anmeldungen bleiben getrennte Schritte.' if okay else
                     'Einrichtung unvollständig. ' + detail + '\n' + REPOSITORIES))
             elif choice == 1:
-                if not profile_choice.layout_supported:
-                    dialog.ok(TITLE, 'Für ' + profile_choice.label + ' bietet dieser Assistent kein Layout an. Bitte die skin-eigenen Einstellungen verwenden; Arctic-Fuse-Dateien werden nicht geschrieben.')
-                    continue
-                if profile_choice.key != 'arctic':
-                    from .layouts import apply_layout, describe_layout
-                    if not all_ready() or not inactive() or not dialog.yesno(TITLE, describe_layout(profile_choice.key) + '\nFortfahren?'):
-                        continue
-                    backup_root = profile / 'setupwizard-backups'
-                    if backup_root.is_symlink():
-                        raise ValueError('unsafe backup root')
-                    backup_root.mkdir(mode=0o700, exist_ok=True)
-                    backup = backup_root / uuid4().hex
-                    if profile_choice.key == 'touch':
-                        from .touch import enable_touch
-                        changed = enable_touch(profile, backup, xbmc)
-                    else:
-                        changed = apply_layout(profile, backup, profile_choice.key)
-                    dialog.ok(TITLE, 'Profil-Konfiguration angewendet, gesichert und zurückgelesen.' if changed else 'Profil-Konfiguration bereits aktuell; keine Änderung.')
-                    continue
                 if not all_ready():
                     dialog.ok(TITLE, 'Zuerst alle benötigten Addons installieren/aktivieren. Es wurde kein Layout geschrieben.')
                     continue
-                if not inactive() or not dialog.yesno(TITLE, describe_template() + '\nVorhandene betroffene Dateien werden gesichert. Fortfahren?'):
+                if not inactive():
                     continue
+                if not dialog.yesno(TITLE, describe_layout(profile_choice.key) +
+                    '\nEmby muss angemeldet und synchronisiert sein. Die lokalen Serien-/Twitch-VOD-Bibliotheken werden anschließend ausgewählt. '
+                    'Vorhandene betroffene Dateien werden gesichert. Bei MOD V2 wird das geteilte Skin-Shortcuts-Menü ersetzt. Fortfahren?'):
+                    continue
+                bindings = library_bindings(profile, lambda title, options: dialog.select(title, options))
                 backup_root = profile / 'setupwizard-backups'
                 if backup_root.is_symlink():
                     raise ValueError('unsafe backup root')
                 backup_root.mkdir(mode=0o700, exist_ok=True)
-                changed = apply_template(profile, backup_root / uuid4().hex, minimal_layout_template())
-                dialog.ok(TITLE, ('Portables Layout geschrieben und gesichert. Arctic Fuse 3 anschließend selbst in Kodi auswählen. Keine Anmeldung, kein Skin-Reload und kein Neustart ausgeführt.' if changed else
-                    'Das Layout entspricht bereits dieser Vorlage. Keine Dateien geändert und keine zusätzliche Sicherung angelegt.'))
+                backup = backup_root / uuid4().hex
+                changed = apply_common_layout(profile, backup, profile_choice.key, bindings)
+                dialog.ok(TITLE, ('Gemeinsames Medienmenü geschrieben, gesichert und zurückgelesen. '
+                    'Gewählten Skin jetzt selbst in Kodi aktivieren; die Anzeige auf diesem Gerät ist damit noch nicht geprüft. Sicherung: ' + str(backup)
+                    if changed else 'Gemeinsames Medienmenü bereits aktuell; keine Änderung.'))
             elif choice == 2:
                 selected = dialog.select('Dienst öffnen: Anmeldung bleibt auf diesem Gerät', [r.label for r in MEDIA_REQUIREMENTS])
                 if selected < 0:
@@ -181,15 +201,14 @@ def run():
                 xbmc.executebuiltin('ActivateWindow(appearancesettings)')
                 return
             elif choice == 7:
-                try:
-                    from .layouts import NAVIGATION
-                except ImportError:
-                    dialog.ok(TITLE, 'Die gemeinsame Inhaltsnavigation ist in diesem Build nicht verfügbar.')
-                    continue
-                selected = dialog.select('Inhalte öffnen', [label for label, _action in NAVIGATION])
-                if 0 <= selected < len(NAVIGATION):
-                    # Actions are repository-owned constants, never user input.
-                    xbmc.executebuiltin(NAVIGATION[selected][1])
+                from .layouts import NAVIGATION
+                labels = ['Movies', 'Series', 'Twitch', 'YouTube', 'Live TV', 'Programm / EPG']
+                selected = dialog.select('Inhalte öffnen', labels)
+                if 0 <= selected < 4:
+                    key = ('movies', 'series', 'twitch', 'youtube')[selected]
+                    open_group(('group=' + key, 'profile=' + profile_choice.key), xbmc, xbmcgui, xbmcvfs)
+                elif selected in (4, 5):
+                    xbmc.executebuiltin(NAVIGATION[selected - 4][1])
         except Exception as exc:
             log('Vorgang fehlgeschlagen: ' + type(exc).__name__)
-            dialog.ok(TITLE, 'Vorgang nicht abgeschlossen. Vorhandene Sicherungen bleiben erhalten. Bei fremden Änderungen verweigert Restore das Überschreiben. Details: Fehlertyp ' + type(exc).__name__)
+            dialog.ok(TITLE, 'Vorgang nicht abgeschlossen. Vorhandene Sicherungen bleiben erhalten. Bei fremden Änderungen verweigert Restore das Überschreiben. Details: ' + type(exc).__name__ + ': ' + str(exc))

@@ -15,10 +15,7 @@ PROFILES = (
     # Version is the verified official Omega skin metadata version; Kodi resolves
     # the skin's declared helper dependencies through its repository manager.
     SkinProfile('amber', 'skin.amber', (3, 99, 2), 'Schnell: Amber (historischer Pi 5 Skin)', True),
-    SkinProfile('touch', 'skin.estuary', (4, 0, 0), 'Touch: Estuary mit Touchmodus', True,
-                'Estouchys letzter Quellstand ist von 2024; aktive Pflege ist nicht bestätigt. '
-                'Darum verwendet dieses Profil Kodis mitgelieferten Estuary mit Touchmodus. '
-                'Die Touch-Oberfläche unterscheidet sich von Arctic. Fortfahren?'),
+    SkinProfile('touch', 'skin.estuary.modv2', (21, 4), 'Touch: Estuary MOD V2', True),
 )
 
 def requirements_for(profile, arctic_requirements, profile_requirements, shared_requirements):

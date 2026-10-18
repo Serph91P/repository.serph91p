@@ -15,14 +15,13 @@ REQUIREMENTS = (
     AddonRequirement('skin.arctic.fuse.3', (3, 3, 12), 'Arctic Fuse 3'),
     AddonRequirement('script.skinvariables', (2, 2, 9), 'Skin Variables'),
     AddonRequirement('script.texturemaker', (0, 2, 9), 'Texture Maker'),
-    AddonRequirement('plugin.video.themoviedb.helper', (6, 17, 9), 'TMDb Helper'),
     AddonRequirement('resource.images.weathericons.white', (0, 0, 1), 'Wettersymbole'),
     AddonRequirement('resource.images.studios.coloured', (0, 0, 1), 'Studio-Symbole'),
     AddonRequirement('resource.font.robotocjksc', (0, 0, 3), 'Roboto CJK'),
 )
 PROFILE_REQUIREMENTS = (
     AddonRequirement('skin.amber', (3, 99, 2), 'Amber'),
-    AddonRequirement('skin.estuary', (4, 0, 0), 'Estuary (Kodi-Standard)'),
+    AddonRequirement('skin.estuary.modv2', (21, 4), 'Estuary MOD V2'),
 )
 MEDIA_REQUIREMENTS = (
     AddonRequirement('plugin.service.emby-next-gen', (12, 4, 23), 'Emby Next Gen'),
@@ -31,8 +30,10 @@ MEDIA_REQUIREMENTS = (
     AddonRequirement('plugin.video.gronkhtv', (2, 3, 7), 'Gronkh.tv'),
     AddonRequirement('script.tubecast', (0,), 'TubeCast'),
     AddonRequirement('pvr.iptvsimple', (0,), 'PVR IPTV Simple'),
+    AddonRequirement('plugin.video.themoviedb.helper', (6, 17, 9), 'TMDb Helper'),
 )
-ALL_REQUIREMENTS = REQUIREMENTS + PROFILE_REQUIREMENTS + MEDIA_REQUIREMENTS
+REPOSITORY_REQUIREMENT = AddonRequirement('repository.serph91p', (1, 0, 1), 'Serph91P Repository mit Setup-Quellen')
+ALL_REQUIREMENTS = REQUIREMENTS + PROFILE_REQUIREMENTS + MEDIA_REQUIREMENTS + (REPOSITORY_REQUIREMENT,)
 REQUIREMENTS_BY_ID = {r.addon_id: r for r in ALL_REQUIREMENTS}
 
 class KodiAddonAPI:

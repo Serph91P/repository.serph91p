@@ -29,6 +29,21 @@ POLICIES = {
     'amber': {AMBER_MENU},
     'touch': set(),  # Native touch layout; no live cached favourites.xml edits.
 }
+# New adapters have independent policies; old backup shapes remain valid.
+COMMON_NODE_FILES = {SKIN_NODE + 'skinvariables-shortcut-' + key + 'submenu.json'
+                     for key in ('1101', '1102', '1103')}
+COMMON_SHORTCUTS = 'addon_data/script.skinshortcuts/'
+for _profile_id in ('arctic', 'amber', 'touch'):
+    _binding = 'addon_data/script.serph91p.setup/bindings-' + _profile_id + '.json'
+    if _profile_id == 'arctic':
+        _paths = ALLOWED_TARGETS | COMMON_NODE_FILES
+    else:
+        _prefix = 'skin.amber-' if _profile_id == 'amber' else ''
+        _paths = {COMMON_SHORTCUTS + _prefix + group + '.DATA.xml'
+                  for group in ('mainmenu', 'movies', 'series', 'twitch', 'youtube')}
+    if _profile_id == 'touch':
+        _paths.add('addon_data/skin.estuary.modv2/settings.xml')
+    POLICIES[_profile_id + '-common'] = _paths | {_binding}
 ALL_TARGETS = set().union(*POLICIES.values())
 SAFE_SETTINGS = {
     "homeswitcher.vertical": "true",
@@ -149,7 +164,7 @@ def _merge_skin_settings(existing: bytes | None, settings: dict) -> bytes:
         # Kodi CSkinInfo::ParseSetting ignores nodes without an explicit type.
         # AF3 HomeSwitcher.Toggle is consumed as Skin.String; only the
         # homeswitcher.* flags below are Skin.HasSetting booleans.
-        matching = [n for n in root.findall('setting') if n.get('id') == key]
+        matching = [n for n in root.findall('setting') if n.get('id', '').lower() == key.lower()]
         node = matching[0] if matching else ET.SubElement(root, 'setting', {'id': key})
         for duplicate in matching[1:]:
             root.remove(duplicate)
@@ -212,7 +227,7 @@ def apply_template(profile, backup_dir, template_data) -> list[str]:
 def apply_payloads(profile, backup_dir, payloads: dict, policy: str) -> list[str]:
     """Internal curated adapters only; exact per-profile target policy."""
     profile = _profile(profile)
-    if policy not in ('amber', 'touch') or set(payloads) != POLICIES[policy]:
+    if policy not in POLICIES or policy == 'arctic' or set(payloads) != POLICIES[policy]:
         raise ValueError('payload path set does not match fixed profile policy')
     stage = []
     for rel, new in sorted(payloads.items()):
@@ -240,7 +255,7 @@ def _apply_stage(profile, backup_dir, stage, policy):
                         "old_sha256": _sha(old) if old is not None else None,
                         "new_sha256": _sha(new), "backup": "files/" + rel if old is not None else None})
     manifest = ({'schema': 1, 'files': entries} if policy == 'arctic'
-                else {'schema': 2, 'profile': policy, 'files': entries})
+                else {'schema': 4 if policy.endswith('-common') else 2, 'profile': policy, 'files': entries})
     backup.mkdir(mode=0o700)
     try:
         for (_, _, old, _), entry in zip(stage, entries):
@@ -284,6 +299,10 @@ def _validate_manifest(profile: Path, backup: Path):
         policy = 'arctic'
     elif (set(manifest) == {'schema', 'profile', 'files'}
           and manifest['schema'] == 2 and manifest['profile'] in ('amber', 'touch')):
+        policy = manifest['profile']
+    elif (set(manifest) == {'schema', 'profile', 'files'}
+          and manifest['schema'] == 4 and manifest['profile'] in
+          ('arctic-common', 'amber-common', 'touch-common')):
         policy = manifest['profile']
     else:
         raise ValueError('invalid manifest schema/profile')

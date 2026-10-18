@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="script.serph91p.setup" name="Serph91P Setup Wizard" version="0.2.1" provider-name="Serph91P">
+<addon id="script.serph91p.setup" name="Serph91P Setup Wizard" version="0.3.0" provider-name="Serph91P">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
+    <import addon="repository.serph91p" version="1.0.1" />
   </requires>
   <extension point="xbmc.python.script" library="default.py">
     <provides>executable</provides>
@@ -9,8 +10,8 @@
   <extension point="xbmc.addon.metadata">
     <summary lang="en_GB">Guided skin and media setup for Kodi</summary>
     <summary lang="de_DE">Geführte Skin- und Medieneinrichtung für Kodi</summary>
-    <description lang="en_GB">Kodi 21 candidate with Arctic Fuse 3, Amber or Estuary touchmode choices, common media add-ons, portable navigation, local backups and sign-in entry points. Requires configured third-party repositories. No credentials included. Not device-validated.</description>
-    <description lang="de_DE">Kodi-21-Testkandidat mit Arctic Fuse 3, Amber oder Estuary-Touchmodus, gemeinsamen Medien-Addons, portabler Navigation, lokalen Sicherungen und Anmeldungseinstiegen. Benötigt konfigurierte Drittanbieter-Repositories. Keine Zugangsdaten enthalten. Noch nicht auf Geräten abgenommen.</description>
+    <description lang="en_GB">Kodi 21 candidate with Arctic Fuse 3, Amber or Estuary MOD V2, a shared LibreELEC-reference media menu, verified installation progress and device-local Emby bindings. Requires paired Serph91P Repository 1.0.1 candidate with native upstream catalogs. No credentials. Not device-approved.</description>
+    <description lang="de_DE">Kodi-21-Testkandidat mit Arctic Fuse 3, Amber oder Estuary MOD V2, gemeinsamem LibreELEC-Medienmenü, Installationsfortschritt und gerätelokalen Emby-Bindungen. Benötigt Serph91P Repository 1.0.1 mit nativen Zusatzkatalogen. Keine Zugangsdaten. Noch nicht auf Geräten abgenommen.</description>
     <platform>all</platform>
     <license>GPL-2.0-or-later</license>
   </extension>

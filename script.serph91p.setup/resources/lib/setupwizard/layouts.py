@@ -39,22 +39,18 @@ def amber_menu():
 
 def describe_layout(profile_id):
     if profile_id == 'arctic':
-        return ('Arctic: Film-/Serienwidgets und Twitch-/YouTube-Hubs. '
-                'Generische Bibliotheksansichten benötigen deine eigene Emby-Synchronisation. '
-                'Die gleichen zusätzlichen Ziele findest du unter Inhalte öffnen im Assistenten.')
+        return ('Arctic: gemeinsames LibreELEC-Menü Movies, Series, Twitch, YouTube, mit Widgets und Untermenüs. '
+                'Lokale Emby-Serien und Twitch-VODs müssen zuvor synchronisiert und ausgewählt sein.')
     if profile_id == 'amber':
-        return ('Amber: übersichtliches Hauptmenü für Live TV, EPG, YouTube, Filme, Serien, '
-                'Twitch und Gronkh.tv sowie Fortsetzen/neue Inhalte. '
+        return ('Amber: gemeinsames LibreELEC-Menü Movies, Series, Twitch, YouTube mit identischen Inhaltszielen als Untermenüs. '
                 'Das ersetzt nur Ambers Skin-Shortcuts-Hauptmenü, mit Sicherung. '
                 'Keine Arctic-Widgetoptik; Kodi/SkinShortcuts muss die Darstellung beim '
                 'manuellen Skinwechsel erzeugen. Andere Skins und deren Hauptmenüs bleiben unverändert.')
     if profile_id == 'touch':
-        return ('Touch: Kodis mitgelieferter Estuary mit aktiviertem Touchmodus. '
-                'Die Änderung erfolgt mit Sicherung und Readback über Kodis Laufzeit-Schnittstelle, '
-                'nicht durch Schreiben aktiver Skin-Dateien. '
-                'Identische Inhaltsziele erreichst du im Assistenten über Inhalte öffnen. '
-                'Keine frei konfigurierbaren Arctic-Hubs oder identischen Widgets versprochen. '
-                'Es werden keine zwischengespeicherten Favoriten überschrieben.')
+        return ('Estuary MOD V2: gemeinsames LibreELEC-Medienmenü Movies, Series, Twitch, YouTube '
+                'mit den jeweiligen Fortsetzen-/Neu-/Genres-/Plugin-Zielen, eigenen Widgets und Untermenüs. '
+                'Emby muss auf diesem Gerät angemeldet und synchronisiert sein. '
+                'Das geteilte Skin-Shortcuts-Menü wird mit Sicherung ersetzt.')
     raise ValueError('unknown profile')
 
 
