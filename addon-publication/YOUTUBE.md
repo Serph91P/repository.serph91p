@@ -17,8 +17,9 @@ The fork-only jobs run profile tests and then call the SHA-pinned shared package
 The existing upstream-only job remains unchanged. Pull-request runs build test
 artifacts but are never eligible for public dispatch.
 
-Only `addon.xml` and `resources/` are runtime entries. All Python entrypoints and
-the TubeCast capability manifest are under `resources/`. The completed-run
+The package allowlist is `addon.xml`, `changelog.txt`, `LICENSES/` and `resources/`.
+The original GPL license and changelog must accompany the distribution. All
+Python entrypoints and the TubeCast capability manifest are under `resources/`. The completed-run
 notifier uses a full-SHA pin and the target-owned `master` exception. It retains
 the exact run, workflow, branch, package hash, evidence, OIDC and artifact guards.
 A skipped legacy upstream validation is not publication evidence.

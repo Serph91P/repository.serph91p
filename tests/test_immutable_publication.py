@@ -82,7 +82,7 @@ def _valid_run(**overrides):
     return run
 
 
-def _make_addon_zip(path, addon_id, version, extra_members=None, include_changelog=True):
+def _make_addon_zip(path, addon_id, version, extra_members=None):
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
         metadata = (
             f'<addon id="{addon_id}" name="Test" version="{version}" '
@@ -90,8 +90,7 @@ def _make_addon_zip(path, addon_id, version, extra_members=None, include_changel
             f"<assets><icon>resources/icon.png</icon></assets></extension></addon>"
         )
         archive.writestr(f"{addon_id}/addon.xml", metadata)
-        if include_changelog:
-            archive.writestr(f"{addon_id}/changelog.txt", b"changes")
+        archive.writestr(f"{addon_id}/changelog.txt", b"changes")
         archive.writestr(f"{addon_id}/resources/icon.png", b"icon-data")
         if extra_members:
             for name, content in extra_members.items():
@@ -2187,6 +2186,29 @@ class TestBuildImmutableRepository(unittest.TestCase):
                 addon_zip.read_bytes(),
             )
 
+    def test_youtube_package_requires_its_license_and_changelog(self):
+        config = builder._source_config("Serph91P/plugin.video.youtube")
+        addon_id = config["addon_id"]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            complete = _make_addon_zip(
+                root / "complete.zip", addon_id, "7.4.4",
+                extra_members={"LICENSES/GPL-2.0-only": "synthetic license fixture"},
+            )
+            for missing in ("LICENSES/GPL-2.0-only", "changelog.txt"):
+                with self.subTest(missing=missing):
+                    incomplete = root / "incomplete.zip"
+                    with zipfile.ZipFile(complete) as source, zipfile.ZipFile(
+                        incomplete, "w", zipfile.ZIP_DEFLATED
+                    ) as dest:
+                        for info in source.infolist():
+                            if info.filename != f"{addon_id}/{missing}":
+                                dest.writestr(info, source.read(info))
+                    with self.assertRaisesRegex(RuntimeError, "Runtime allowlist"):
+                        builder.validate_archive_topology(
+                            incomplete, addon_id, "7.4.4", config["runtime_entries"]
+                        )
+
     def test_first_youtube_publication_then_unrelated_update_preserves_it(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = _make_repo_root(tmpdir)
@@ -2195,7 +2217,10 @@ class TestBuildImmutableRepository(unittest.TestCase):
             version = "7.4.4"
             asset = f"{addon_id}-{version}.zip"
             youtube_zip = root / "youtube.zip"
-            _make_addon_zip(youtube_zip, addon_id, version, include_changelog=False)
+            _make_addon_zip(
+                youtube_zip, addon_id, version,
+                extra_members={"LICENSES/GPL-2.0-only": "synthetic license fixture"},
+            )
             evidence_archive = root / "evidence.zip"
             package_archive = root / "package.zip"
             evidence = _valid_evidence(
@@ -3276,7 +3301,10 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
 
         youtube = builder._source_config("Serph91P/plugin.video.youtube")
         self.assertEqual(youtube["validation_workflow_id"], 389194440)
-        self.assertEqual(youtube["runtime_entries"], ("addon.xml", "resources/"))
+        self.assertEqual(
+            youtube["runtime_entries"],
+            ("addon.xml", "changelog.txt", "LICENSES/", "resources/"),
+        )
         self.assertIs(youtube["bootstrap_pending"], True)
         for config in builder.ADDONS:
             if config["addon_id"] != "plugin.video.youtube":

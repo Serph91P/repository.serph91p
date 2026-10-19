@@ -138,7 +138,7 @@ ADDONS = [
         "validation_workflow_id": 389194440,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
-        "runtime_entries": ("addon.xml", "resources/"),
+        "runtime_entries": ("addon.xml", "changelog.txt", "LICENSES/", "resources/"),
         # Remove immediately after the first approved public YouTube publication.
         "bootstrap_pending": True,
     },
