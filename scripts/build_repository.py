@@ -124,7 +124,23 @@ ADDONS = [
         "validation_workflow_id": 234990067,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
-        "runtime_entries": ("addon.xml", "main.py", "script.py", "resources/"),
+        "runtime_entries": ("addon.xml", "LICENSE", "main.py", "script.py", "resources/"),
+    },
+    {
+        "owner": "Serph91P",
+        "repo": "plugin.video.youtube",
+        "addon_id": "plugin.video.youtube",
+        "branch": "master",
+        "publication_enabled": True,
+        "publication_branch": "master",
+        "validation_workflow": "Add-on Validations",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
+        "validation_workflow_id": 389194440,
+        "package_artifact_name": "addon-package",
+        "evidence_artifact_name": "validation-evidence",
+        "runtime_entries": ("addon.xml", "changelog.txt", "LICENSES/", "resources/"),
+        # Remove immediately after the first approved public YouTube publication.
+        "bootstrap_pending": True,
     },
 ]
 
@@ -868,7 +884,11 @@ def validate_site_manifest(site_output=SITE_OUTPUT):
                     f"Generated site is missing advertised asset {asset_path}"
                 )
 
-    required_addons = {config["addon_id"] for config in ADDONS}
+    required_addons = {
+        config["addon_id"]
+        for config in ADDONS
+        if config.get("bootstrap_pending") is not True
+    }
     required_addons.add(REPO_ADDON_ID)
     missing_coverage = required_addons.difference(addon_ids)
     if missing_coverage:
@@ -1715,6 +1735,9 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
                 other_addon_id = config["addon_id"]
                 print(f"\nPreserving current public package: {other_addon_id}")
                 if other_addon_id not in current_versions:
+                    if config.get("bootstrap_pending") is True:
+                        print("  Awaiting first validated publication; nothing to preserve")
+                        continue
                     raise RuntimeError(
                         f"Current repository manifest is missing configured add-on "
                         f"{other_addon_id!r}"

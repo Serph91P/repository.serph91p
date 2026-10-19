@@ -13,6 +13,7 @@ Custom Kodi addon repository hosted on GitHub Pages.
 | plugin.video.plexkodiconnect.movies | PlexKodiConnect Filme |
 | plugin.video.plexkodiconnect.tvshows | PlexKodiConnect Serien |
 | script.tubecast | TubeCast - YouTube Cast |
+| plugin.video.youtube | YouTube fork with optional phone-to-profile TubeCast routing (publication pending) |
 
 ## Installation in Kodi
 
@@ -28,15 +29,20 @@ Custom Kodi addon repository hosted on GitHub Pages.
 
 ## Automatische Updates
 
-Alle Addons werden automatisch aktualisiert wenn:
-- Ein Push auf den `main` Branch eines Addon-Repos erfolgt
-- Die GitHub Actions Pipeline automatisch eine neue Version baut
-- Kodi erkennt das Update und installiert es automatisch
+Die freigegebenen Quell-Branches stehen in `scripts/build_repository.py`:
+`main` fuer GronkhTV, `master` fuer den YouTube-Fork, sonst `develop`.
+Ein erfolgreicher Validierungslauf liefert ein unveraenderliches Paket und dessen
+Nachweis. Erst der gepruefte Dispatch aktualisiert die oeffentliche Kodi-Site;
+Kodi kann anschliessend eine hoehere Version als Update erkennen.
+
+Die YouTube-/TubeCast-Profilfunktion ist noch nicht allgemein veroeffentlicht.
+[Einbindung, Erstveroeffentlichung und Freigabe-Gates](addon-publication/YOUTUBE.md).
 
 ## Fuer Entwickler
 
 Die Repository-Aktualiserung erfolgt automatisch ueber `repository_dispatch` Events von den einzelnen Addon-Repos.
 
-Manuell kann das Repository mit folgendem Workflow-Dispatch aktualisiert werden:
-1. Gehe zu Actions → "Update Repository"
-2. Klicke "Run workflow"
+Manuelle Wiederholungen beginnen im freigegebenen Quell-Workflow mit
+`workflow_dispatch`. Das Ziel nimmt ausschliesslich den validierten
+`validated-addon-publication`-Dispatch entgegen; es bietet keinen ungeprueften
+manuellen Publish-Bypass.

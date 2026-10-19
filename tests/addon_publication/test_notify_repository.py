@@ -155,6 +155,29 @@ class ValidateInputsTests(unittest.TestCase):
 
 
 class ValidateRunTests(unittest.TestCase):
+    def test_youtube_master_is_allowed_without_loosening_other_source_branches(self):
+        source = "Serph91P/plugin.video.youtube"
+        for event in ("push", "workflow_dispatch"):
+            with self.subTest(event=event):
+                values = valid_inputs(
+                    source_repository=source, expected_branch="master", validation_event=event
+                )
+                notifier.validate_inputs(values, source)
+                notifier.validate_run(
+                    valid_run(
+                        head_branch="master", event=event,
+                        repository={"full_name": source},
+                    ),
+                    values,
+                )
+        for branch in ("develop", "main"):
+            with self.assertRaises(notifier.NotificationError):
+                notifier.validate_inputs(
+                    valid_inputs(source_repository=source, expected_branch=branch), source
+                )
+        with self.assertRaises(notifier.NotificationError):
+            notifier.validate_inputs(valid_inputs(expected_branch="master"), SOURCE)
+
     def test_gronkhtv_main_dispatch_is_allowed_by_source_specific_policy(self):
         values = valid_inputs(
             source_repository="Serph91P/plugin.video.gronkhtv",
