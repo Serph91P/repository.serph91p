@@ -13,7 +13,7 @@ Custom Kodi addon repository hosted on GitHub Pages.
 | plugin.video.plexkodiconnect.movies | PlexKodiConnect Filme |
 | plugin.video.plexkodiconnect.tvshows | PlexKodiConnect Serien |
 | script.tubecast | TubeCast - YouTube Cast |
-| plugin.video.youtube | YouTube fork with optional phone-to-profile TubeCast routing (publication pending) |
+| plugin.video.youtube | YouTube fork with optional phone-to-profile TubeCast routing |
 
 ## Installation in Kodi
 
@@ -35,7 +35,7 @@ Ein erfolgreicher Validierungslauf liefert ein unveraenderliches Paket und desse
 Nachweis. Erst der gepruefte Dispatch aktualisiert die oeffentliche Kodi-Site;
 Kodi kann anschliessend eine hoehere Version als Update erkennen.
 
-Die YouTube-/TubeCast-Profilfunktion ist noch nicht allgemein veroeffentlicht.
+Die Profilfunktion ist ab YouTube `7.4.4.1` und TubeCast `1.6.1+omega.2` verfuegbar.
 [Einbindung, Erstveroeffentlichung und Freigabe-Gates](addon-publication/YOUTUBE.md).
 
 ## Fuer Entwickler
