@@ -1,75 +1,60 @@
 # YouTube fork and TubeCast distribution
 
-This wires the paired-profile feature into the existing immutable publication
-pipeline. It does not create a beta repository, publish test ZIPs, install an
-add-on, or change the public repository by itself.
+The optional phone-to-profile feature is published through the existing
+immutable Kodi repository pipeline:
 
-Companion changes:
-- [YouTube fork feature](https://github.com/Serph91P/plugin.video.youtube/pull/3)
-- [TubeCast sender routing](https://github.com/Serph91P/script.tubecast/pull/12)
+- YouTube fork: `7.4.4.1`, [feature PR](https://github.com/Serph91P/plugin.video.youtube/pull/3).
+- TubeCast: `1.6.1+omega.2`, [sender-routing PR](https://github.com/Serph91P/script.tubecast/pull/12).
 
-## Source contract
+The published executable/configuration files match the natively accepted
+LibreELEC test builds. Release-only changes increase the versions, describe the
+feature and retain the original distribution licenses. This is the tested
+standard YouTube runtime, not the separately planned Unofficial-base migration.
+
+## Source contracts
 
 YouTube uses `Serph91P/plugin.video.youtube`, branch `master`, the existing
 `Add-on Validations` workflow at `.github/workflows/addon-validations.yml`,
-and Actions workflow ID `389194440` (read from the GitHub API, not inferred).
-The fork-only jobs run profile tests and then call the SHA-pinned shared packager.
-The existing upstream-only job remains unchanged. Pull-request runs build test
-artifacts but are never eligible for public dispatch.
+and Actions workflow ID `389194440`. Fork tests precede the SHA-pinned shared
+packager. A skipped upstream-only job is not validation evidence. Its archive
+allowlist is `addon.xml`, `changelog.txt`, `LICENSES/` and `resources/`.
 
-The package allowlist is `addon.xml`, `changelog.txt`, `LICENSES/` and `resources/`.
-The original GPL license and changelog must accompany the distribution. All
-Python entrypoints and the TubeCast capability manifest are under `resources/`. The completed-run
-notifier uses a full-SHA pin and the target-owned `master` exception. It retains
-the exact run, workflow, branch, package hash, evidence, OIDC and artifact guards.
-A skipped legacy upstream validation is not publication evidence.
+TubeCast uses its existing immutable `develop` publication wiring. Its allowlist
+is `addon.xml`, `LICENSE`, `main.py`, `script.py` and `resources/`. No second
+updater or manual ZIP import is required.
 
-TubeCast already has the corresponding immutable `develop` publication wiring;
-no second TubeCast updater or manual ZIP import is needed.
+The completed-run notifier retains the exact run, workflow, branch, package
+hash, evidence, OIDC and artifact guards. Pull-request artifacts are test-only
+and cannot dispatch public updates. Keep the existing `REPO_DISPATCH_TOKEN`
+provisioned through the owner credential process; never put credentials in
+source. The target's `SOURCE_ARTIFACT_TOKEN` must be able to read source artifacts.
 
-## One-time bootstrap
+## Bootstrap completed
 
-YouTube is not yet in the public `addons.xml`. Its target-owned registry entry
-therefore has `bootstrap_pending: True`. Only that explicitly marked source may
-be absent while another add-on updates. Existing configured sources stay
-mandatory. If YouTube is already advertised, its current package must still be
-downloaded and validated; the flag never permits dropping an advertised package
-or accepting missing/broken package bytes. The first valid YouTube candidate is
-published directly from its own validated package/evidence pair.
+The first approved YouTube publication was validated by source run
+[39304849914](https://github.com/Serph91P/plugin.video.youtube/actions/runs/39304849914)
+and deployed by target run
+[39305121460](https://github.com/Serph91P/repository.serph91p/actions/runs/39305121460).
+The public index and both downloaded packages were verified against source
+artifact hashes.
 
-Immediately after the first approved public YouTube publication, remove the
-`bootstrap_pending` entry and its matching temporary registry-test assertion in
-a follow-up change. All future missing YouTube manifest entries must then fail
-closed like the existing add-ons. Do not leave the bootstrap exception enabled
-as a permanent optional-add-on policy.
+The one-time `bootstrap_pending` registry exception is now removed. Every
+configured source, including YouTube, is mandatory during later updates. A
+missing or broken public YouTube package must fail closed rather than silently
+drop the add-on. Tests prohibit bootstrap flags in the active registry.
 
-## Activation gates and order
+## Future release order
 
-1. Complete the native LibreELEC test of the two test packages: two phones,
-   separately signed-in profiles, Kodi's selected profile deliberately different,
-   correct remote histories, stop/next/reconnect and cancellation/error cases.
-   Unit tests and package CI do not establish that result.
-2. Obtain approval for merge **and public Pages publication**. Merging the
-   source workflow onto its publication branch will automatically publish after
-   successful validation if its dispatch secret is configured.
-3. Assign a new Kodi-sortable TubeCast version before publishing its changed
-   bytes: `1.6.1+omega.1` is already public and cannot be overwritten. YouTube's
-   initial `7.4.4` identity is not in this repository yet, but an installation
-   already on `7.4.4` will not automatically upgrade to the same version; either
-   explicitly select this repository's package for the initial installation or
-   approve a higher fork version before publishing. Never relabel a previously
-   published package with different bytes.
-4. Provision YouTube's existing `REPO_DISPATCH_TOKEN` secret through the owner
-   credential process. The fork currently has no repository secrets. Do not
-   create new tokens or copy credentials into code. Confirm the target's
-   `SOURCE_ARTIFACT_TOKEN` can read the YouTube workflow artifacts.
-5. Merge the target policy first. Its temporary bootstrap state lets other
-   add-ons continue updating. Then merge/validate the YouTube source workflow
-   and feature on `master`, publish YouTube, and publish the bumped TubeCast
-   feature on `develop`. A manual source `workflow_dispatch` is available for
-   a controlled retry once the source workflow is on its default branch.
-6. Verify the actual Pages manifest/checksum, both downloaded ZIPs, Kodi update
-   selection and native profile routing. Remove the bootstrap exception as above.
+1. Test and obtain approval for changed runtime and public publication.
+2. Increase Kodi-sortable package versions before publishing changed bytes;
+   never overwrite an existing `(add-on ID, version)` with different content.
+3. Merge any target-policy changes first, then approved source changes on the
+   configured publication branches. Successful source validation automatically
+   notifies the target. A source `workflow_dispatch` on `master` is available for
+   a controlled YouTube retry; the target itself has no manual-upload bypass.
+4. Wait for source validation, notifier and target deployment to complete.
+   Verify the actual Pages index/checksum and downloaded ZIP hashes against the
+   evidence of the same source run. Keep Kodi installation/update-selection
+   checks distinct from an HTTP download check.
 
-Until these gates are met, keep the changes as draft PRs and use only the
-explicitly supplied test ZIPs for the requested device test.
+No beta channel or test-ZIP publication is introduced by this integration.

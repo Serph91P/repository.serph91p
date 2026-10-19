@@ -2213,6 +2213,8 @@ class TestBuildImmutableRepository(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = _make_repo_root(tmpdir)
             youtube = builder._source_config("Serph91P/plugin.video.youtube").copy()
+            # Exercise the former one-time state without re-enabling it in policy.
+            youtube["bootstrap_pending"] = True
             addon_id = youtube["addon_id"]
             version = "7.4.4"
             asset = f"{addon_id}-{version}.zip"
@@ -3309,10 +3311,8 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
             youtube["runtime_entries"],
             ("addon.xml", "changelog.txt", "LICENSES/", "resources/"),
         )
-        self.assertIs(youtube["bootstrap_pending"], True)
         for config in builder.ADDONS:
-            if config["addon_id"] != "plugin.video.youtube":
-                self.assertNotIn("bootstrap_pending", config)
+            self.assertNotIn("bootstrap_pending", config)
 
 
 if __name__ == "__main__":
