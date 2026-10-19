@@ -82,7 +82,7 @@ def _valid_run(**overrides):
     return run
 
 
-def _make_addon_zip(path, addon_id, version, extra_members=None):
+def _make_addon_zip(path, addon_id, version, extra_members=None, include_changelog=True):
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
         metadata = (
             f'<addon id="{addon_id}" name="Test" version="{version}" '
@@ -90,7 +90,8 @@ def _make_addon_zip(path, addon_id, version, extra_members=None):
             f"<assets><icon>resources/icon.png</icon></assets></extension></addon>"
         )
         archive.writestr(f"{addon_id}/addon.xml", metadata)
-        archive.writestr(f"{addon_id}/changelog.txt", b"changes")
+        if include_changelog:
+            archive.writestr(f"{addon_id}/changelog.txt", b"changes")
         archive.writestr(f"{addon_id}/resources/icon.png", b"icon-data")
         if extra_members:
             for name, content in extra_members.items():
@@ -123,14 +124,25 @@ def _make_package_archive(addon_zip_path, dest, member_name=FIXTURE_ASSET):
     return dest
 
 
-def _make_mock_api_responses(evidence_archive, package_archive):
-    run_data = _valid_run()
+def _live_artifact_dates():
+    # Build tests use the real expiry clock; keep their mocked artifacts live.
+    created = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+    expires = created + datetime.timedelta(days=30)
+    return (
+        created.isoformat().replace("+00:00", "Z"),
+        expires.isoformat().replace("+00:00", "Z"),
+    )
+
+
+def _make_mock_api_responses(evidence_archive, package_archive, run_data=None):
+    run_data = _valid_run() if run_data is None else run_data
+    created_at, expires_at = _live_artifact_dates()
 
     def api_get(url):
-        if "/git/ref/heads/develop" in url:
+        if f"/git/ref/heads/{run_data['head_branch']}" in url:
             return {"object": {"sha": FIXTURE_SHA}}
         expected_prefix = (
-            f"{builder.GH_API}/repos/{FIXTURE_SOURCE_REPO}/actions/runs/"
+            f"{builder.GH_API}/repos/{run_data['repository']['full_name']}/actions/runs/"
             f"{FIXTURE_RUN_ID}"
         )
         if not url.startswith(expected_prefix):
@@ -145,8 +157,8 @@ def _make_mock_api_responses(evidence_archive, package_archive):
                         "name": "validation-evidence",
                         "id": 1,
                         "expired": False,
-                        "created_at": "2026-07-01T00:00:00Z",
-                        "expires_at": "2026-07-31T00:00:00Z",
+                        "created_at": created_at,
+                        "expires_at": expires_at,
                         "archive_download_url": "https://example.invalid/evidence.zip",
                         "workflow_run": {"id": FIXTURE_RUN_ID},
                     },
@@ -154,8 +166,8 @@ def _make_mock_api_responses(evidence_archive, package_archive):
                         "name": "addon-package",
                         "id": 2,
                         "expired": False,
-                        "created_at": "2026-07-01T00:00:00Z",
-                        "expires_at": "2026-07-31T00:00:00Z",
+                        "created_at": created_at,
+                        "expires_at": expires_at,
                         "archive_download_url": "https://example.invalid/package.zip",
                         "workflow_run": {"id": FIXTURE_RUN_ID},
                     },
@@ -1116,7 +1128,9 @@ class TestBuildImmutableRepository(unittest.TestCase):
         "runtime_entries": ("addon.xml", "changelog.txt", "resources/"),
     }
 
-    def _build_with_mock(self, root, dispatch_payload, api_get, download):
+    def _build_with_mock(
+        self, root, dispatch_payload, api_get, download, extra_configs=()
+    ):
         with (
             mock.patch.dict(
                 os.environ, {"SOURCE_GITHUB_TOKEN": "test-source-token"}, clear=False
@@ -1125,7 +1139,9 @@ class TestBuildImmutableRepository(unittest.TestCase):
             mock.patch.object(builder, "source_github_api_get", side_effect=api_get),
             mock.patch.object(builder, "download_file", side_effect=download),
             mock.patch.object(builder, "source_download_file", side_effect=download),
-            mock.patch.object(builder, "ADDONS", [self._target_addon_config]),
+            mock.patch.object(
+                builder, "ADDONS", [self._target_addon_config, *extra_configs]
+            ),
         ):
             builder.build_immutable_repository(dispatch_payload, root)
 
@@ -1591,53 +1607,14 @@ class TestBuildImmutableRepository(unittest.TestCase):
             _make_evidence_archive(evidence, evidence_archive)
             _make_package_archive(addon_zip, package_archive)
 
+            valid_api_get, download = _make_mock_api_responses(
+                evidence_archive, package_archive
+            )
+
             def api_get(url):
                 if "/git/ref/heads/develop" in url:
                     return {"object": {"sha": stale_sha}}
-                if "/actions/runs/" in url and "/artifacts" not in url:
-                    return {
-                        "id": FIXTURE_RUN_ID,
-                        "head_sha": FIXTURE_SHA,
-                        "name": "Add-on Validations",
-                        "path": FIXTURE_WORKFLOW_PATH,
-                        "head_branch": FIXTURE_BRANCH,
-                        "conclusion": "success",
-                        "status": "completed",
-                        "event": "push",
-                        "repository": {"full_name": FIXTURE_SOURCE_REPO},
-                        "workflow_id": 211623879,
-                    }
-                if "/actions/runs/" in url and "/artifacts" in url:
-                    return {
-                        "total_count": 2,
-                        "artifacts": [
-                            {
-                                "name": "validation-evidence",
-                                "id": 1,
-                                "expired": False,
-                                "created_at": "2026-07-01T00:00:00Z",
-                                "expires_at": "2026-07-31T00:00:00Z",
-                                "archive_download_url": "https://example.invalid/evidence.zip",
-                                "workflow_run": {"id": FIXTURE_RUN_ID},
-                            },
-                            {
-                                "name": "addon-package",
-                                "id": 2,
-                                "expired": False,
-                                "created_at": "2026-07-01T00:00:00Z",
-                                "expires_at": "2026-07-31T00:00:00Z",
-                                "archive_download_url": "https://example.invalid/package.zip",
-                                "workflow_run": {"id": FIXTURE_RUN_ID},
-                            },
-                        ],
-                    }
-                raise RuntimeError(f"Unexpected URL: {url}")
-
-            def download(url, dest):
-                if "evidence" in url:
-                    shutil.copy2(evidence_archive, dest)
-                elif "package" in url:
-                    shutil.copy2(package_archive, dest)
+                return valid_api_get(url)
 
             payload = _valid_dispatch(candidate_sha=stale_sha)
             with self.assertRaisesRegex(RuntimeError, "does not match run head_sha"):
@@ -2177,6 +2154,127 @@ class TestBuildImmutableRepository(unittest.TestCase):
             source_rebuild.assert_not_called()
             branch_archive.assert_not_called()
 
+    def test_bootstrap_youtube_absence_does_not_block_unrelated_update(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = _make_repo_root(tmpdir)
+            addon_zip = root / "addon.zip"
+            _make_addon_zip(addon_zip, FIXTURE_ADDON_ID, FIXTURE_VERSION)
+            evidence_archive = root / "evidence.zip"
+            package_archive = root / "package.zip"
+            _make_evidence_archive(
+                _valid_evidence(artifact_sha256=_zip_sha256(addon_zip)), evidence_archive
+            )
+            _make_package_archive(addon_zip, package_archive)
+            api_get, download = _make_mock_api_responses(evidence_archive, package_archive)
+            youtube = {
+                "owner": "Serph91P",
+                "repo": "plugin.video.youtube",
+                "addon_id": "plugin.video.youtube",
+                "bootstrap_pending": True,
+                "runtime_entries": ("addon.xml", "resources/"),
+            }
+            public_download = mock.Mock()
+            with mock.patch.object(builder, "download_current_package", public_download):
+                self._build_with_mock(
+                    root, _valid_dispatch(), api_get, download, extra_configs=(youtube,)
+                )
+            public_download.assert_not_called()
+            manifest = builder._current_manifest_versions(root)
+            self.assertIn(FIXTURE_ADDON_ID, manifest)
+            self.assertNotIn("plugin.video.youtube", manifest)
+            self.assertEqual(
+                (root / "repo" / FIXTURE_ADDON_ID / FIXTURE_ASSET).read_bytes(),
+                addon_zip.read_bytes(),
+            )
+
+    def test_first_youtube_publication_then_unrelated_update_preserves_it(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = _make_repo_root(tmpdir)
+            youtube = builder._source_config("Serph91P/plugin.video.youtube").copy()
+            addon_id = youtube["addon_id"]
+            version = "7.4.4"
+            asset = f"{addon_id}-{version}.zip"
+            youtube_zip = root / "youtube.zip"
+            _make_addon_zip(youtube_zip, addon_id, version, include_changelog=False)
+            evidence_archive = root / "evidence.zip"
+            package_archive = root / "package.zip"
+            evidence = _valid_evidence(
+                addon_id=addon_id, addon_version=version, asset_name=asset,
+                publication_id=f"{addon_id}@{version}",
+                artifact_sha256=_zip_sha256(youtube_zip),
+            )
+            _make_evidence_archive(evidence, evidence_archive)
+            _make_package_archive(youtube_zip, package_archive, member_name=asset)
+            api_get, download = _make_mock_api_responses(
+                evidence_archive, package_archive,
+                run_data=_valid_run(
+                    repository={"full_name": "Serph91P/plugin.video.youtube"},
+                    head_branch="master", workflow_id=389194440,
+                ),
+            )
+            dispatch = _valid_dispatch(
+                source_repo="Serph91P/plugin.video.youtube", expected_branch="master",
+                publication_id=f"{addon_id}@{version}",
+            )
+            with mock.patch.object(self, "_target_addon_config", youtube):
+                self._build_with_mock(root, dispatch, api_get, download)
+            self.assertEqual(builder._current_manifest_versions(root)[addon_id], version)
+            self.assertEqual(
+                (root / "_site" / addon_id / asset).read_bytes(), youtube_zip.read_bytes()
+            )
+
+            # Activation removes the one-time bootstrap exception. The next update
+            # must preserve the already public YouTube package byte for byte.
+            youtube.pop("bootstrap_pending")
+            twitch_zip = root / "twitch.zip"
+            _make_addon_zip(twitch_zip, FIXTURE_ADDON_ID, FIXTURE_VERSION)
+            _make_evidence_archive(
+                _valid_evidence(artifact_sha256=_zip_sha256(twitch_zip)), evidence_archive
+            )
+            _make_package_archive(twitch_zip, package_archive)
+            api_get, download = _make_mock_api_responses(evidence_archive, package_archive)
+
+            def download_public(requested_id, requested_version, destination):
+                self.assertEqual((requested_id, requested_version), (addon_id, version))
+                shutil.copy2(youtube_zip, destination)
+
+            with mock.patch.object(
+                builder, "download_current_package", side_effect=download_public
+            ):
+                self._build_with_mock(
+                    root, _valid_dispatch(), api_get, download, extra_configs=(youtube,)
+                )
+            self.assertEqual(
+                (root / "_site" / addon_id / asset).read_bytes(), youtube_zip.read_bytes()
+            )
+            self.assertEqual(
+                set(builder._current_manifest_versions(root)),
+                {addon_id, FIXTURE_ADDON_ID, builder.REPO_ADDON_ID},
+            )
+
+    def test_bootstrap_flag_must_be_literal_true_and_missing_packages_stay_fatal(self):
+        for flag in (False, 1, "true", None):
+            with self.subTest(flag=flag), tempfile.TemporaryDirectory() as tmpdir:
+                root = _make_repo_root(tmpdir)
+                repo, site, repo_before, site_before = self._add_existing_outputs(root)
+                addon_zip = root / "addon.zip"
+                _make_addon_zip(addon_zip, FIXTURE_ADDON_ID, FIXTURE_VERSION)
+                evidence_archive = root / "evidence.zip"
+                package_archive = root / "package.zip"
+                _make_evidence_archive(
+                    _valid_evidence(artifact_sha256=_zip_sha256(addon_zip)), evidence_archive
+                )
+                _make_package_archive(addon_zip, package_archive)
+                api_get, download = _make_mock_api_responses(evidence_archive, package_archive)
+                youtube = builder._source_config("Serph91P/plugin.video.youtube").copy()
+                youtube["bootstrap_pending"] = flag
+                with self.assertRaisesRegex(RuntimeError, "missing configured add-on"):
+                    self._build_with_mock(
+                        root, _valid_dispatch(), api_get, download, extra_configs=(youtube,)
+                    )
+                self.assertEqual(_snapshot_tree(repo), repo_before)
+                self.assertEqual(_snapshot_tree(site), site_before)
+
     def test_every_configured_unrelated_addon_is_required_in_current_manifest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = _make_repo_root(tmpdir)
@@ -2459,6 +2557,7 @@ class TestSourceTokenIsolation(unittest.TestCase):
                 "</addons>",
                 encoding="utf-8",
             )
+            created_at, expires_at = _live_artifact_dates()
             artifacts_payload = {
                 "total_count": 2,
                 "artifacts": [
@@ -2466,8 +2565,8 @@ class TestSourceTokenIsolation(unittest.TestCase):
                         "name": "validation-evidence",
                         "id": 1,
                         "expired": False,
-                        "created_at": "2026-07-01T00:00:00Z",
-                        "expires_at": "2026-07-31T00:00:00Z",
+                        "created_at": created_at,
+                        "expires_at": expires_at,
                         "archive_download_url": evidence_url,
                         "workflow_run": {"id": FIXTURE_RUN_ID},
                     },
@@ -2475,8 +2574,8 @@ class TestSourceTokenIsolation(unittest.TestCase):
                         "name": "addon-package",
                         "id": 2,
                         "expired": False,
-                        "created_at": "2026-07-01T00:00:00Z",
-                        "expires_at": "2026-07-31T00:00:00Z",
+                        "created_at": created_at,
+                        "expires_at": expires_at,
                         "archive_download_url": package_url,
                         "workflow_run": {"id": FIXTURE_RUN_ID},
                     },
@@ -2575,42 +2674,9 @@ class TestSourceTokenIsolation(unittest.TestCase):
             _make_evidence_archive(evidence, evidence_archive)
             _make_package_archive(addon_zip, package_archive)
 
-            def api_get_side_effect(url):
-                if "/git/ref/heads/" in url:
-                    return {"object": {"sha": FIXTURE_SHA}}
-                if "/actions/runs/" in url and "/artifacts" not in url:
-                    return _valid_run()
-                if "/actions/runs/" in url and "/artifacts" in url:
-                    return {
-                        "total_count": 2,
-                        "artifacts": [
-                            {
-                                "name": "validation-evidence",
-                                "id": 1,
-                                "expired": False,
-                                "created_at": "2026-07-01T00:00:00Z",
-                                "expires_at": "2026-07-31T00:00:00Z",
-                                "archive_download_url": "https://example.invalid/evidence.zip",
-                                "workflow_run": {"id": FIXTURE_RUN_ID},
-                            },
-                            {
-                                "name": "addon-package",
-                                "id": 2,
-                                "expired": False,
-                                "created_at": "2026-07-01T00:00:00Z",
-                                "expires_at": "2026-07-31T00:00:00Z",
-                                "archive_download_url": "https://example.invalid/package.zip",
-                                "workflow_run": {"id": FIXTURE_RUN_ID},
-                            },
-                        ],
-                    }
-                raise RuntimeError(f"Unexpected URL: {url}")
-
-            def download_side_effect(url, dest):
-                if "evidence" in url:
-                    shutil.copy2(evidence_archive, dest)
-                elif "package" in url:
-                    shutil.copy2(package_archive, dest)
+            api_get_side_effect, download_side_effect = _make_mock_api_responses(
+                evidence_archive, package_archive
+            )
 
             target_api_mock = mock.MagicMock()
             with (
@@ -3183,6 +3249,7 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
             "Serph91P/plugin.video.plexkodiconnect.movies",
             "Serph91P/plugin.video.plexkodiconnect.tvshows",
             "Serph91P/script.tubecast",
+            "Serph91P/plugin.video.youtube",
         }
         self.assertEqual(
             {f"{config['owner']}/{config['repo']}" for config in builder.ADDONS},
@@ -3195,7 +3262,10 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
                     ".github/workflows/addon-validations.yml",
                 )
                 expected_branch = (
-                    "main" if config["addon_id"] == "plugin.video.gronkhtv" else "develop"
+                    {
+                        "plugin.video.gronkhtv": "main",
+                        "plugin.video.youtube": "master",
+                    }.get(config["addon_id"], "develop")
                 )
                 self.assertEqual(config["publication_branch"], expected_branch)
                 self.assertEqual(config["package_artifact_name"], "addon-package")
@@ -3203,6 +3273,14 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
                     config["evidence_artifact_name"], "validation-evidence"
                 )
                 self.assertIs(config["publication_enabled"], True)
+
+        youtube = builder._source_config("Serph91P/plugin.video.youtube")
+        self.assertEqual(youtube["validation_workflow_id"], 389194440)
+        self.assertEqual(youtube["runtime_entries"], ("addon.xml", "resources/"))
+        self.assertIs(youtube["bootstrap_pending"], True)
+        for config in builder.ADDONS:
+            if config["addon_id"] != "plugin.video.youtube":
+                self.assertNotIn("bootstrap_pending", config)
 
 
 if __name__ == "__main__":

@@ -18,7 +18,10 @@ from typing import NamedTuple
 
 
 GH_API = "https://api.github.com"
-SOURCE_BRANCHES = {"Serph91P/plugin.video.gronkhtv": "main"}
+SOURCE_BRANCHES = {
+    "Serph91P/plugin.video.gronkhtv": "main",
+    "Serph91P/plugin.video.youtube": "master",
+}
 DEFAULT_TARGET_BRANCH = "develop"
 VALIDATION_EVENTS = frozenset({"push", "workflow_dispatch"})
 PACKAGE_ARTIFACT = "addon-package"
