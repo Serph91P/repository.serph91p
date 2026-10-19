@@ -124,7 +124,7 @@ ADDONS = [
         "validation_workflow_id": 234990067,
         "package_artifact_name": "addon-package",
         "evidence_artifact_name": "validation-evidence",
-        "runtime_entries": ("addon.xml", "main.py", "script.py", "resources/"),
+        "runtime_entries": ("addon.xml", "LICENSE", "main.py", "script.py", "resources/"),
     },
     {
         "owner": "Serph91P",

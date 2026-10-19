@@ -3299,6 +3299,10 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
                 )
                 self.assertIs(config["publication_enabled"], True)
 
+        self.assertEqual(
+            builder._source_config("Serph91P/script.tubecast")["runtime_entries"],
+            ("addon.xml", "LICENSE", "main.py", "script.py", "resources/"),
+        )
         youtube = builder._source_config("Serph91P/plugin.video.youtube")
         self.assertEqual(youtube["validation_workflow_id"], 389194440)
         self.assertEqual(
