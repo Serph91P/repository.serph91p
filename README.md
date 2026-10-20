@@ -38,6 +38,10 @@ Kodi kann anschliessend eine hoehere Version als Update erkennen.
 Die Profilfunktion ist ab YouTube `7.4.4.1` und TubeCast `1.6.1+omega.2` verfuegbar.
 [Einbindung, Erstveroeffentlichung und Freigabe-Gates](addon-publication/YOUTUBE.md).
 
+## Arctic setup wizard candidate
+
+`script.serph91p.setup/` contains a **Kodi 21 development candidate**, not an add-on published in the repository yet. See its [scope, prerequisites, safety model and build instructions](script.serph91p.setup/README.md). Version 0.3.4 imports the portable current Arctic style/reference locale, covers both MODV2 menu-storage families, and asks for one wizard-owned approval of the fixed addon list (native Kodi prompts remain), allows layout application before Emby login/sync and marks unbound entries explicitly. It offers Arctic Fuse 3, Amber and Estuary MOD V2, a common LibreELEC-reference media structure and verified installation progress. The paired repository 1.0.1 candidate exposes the necessary upstream catalogs natively; one manual update of that own-repository ZIP is needed for the unpublished test. Skin-specific layouts differ; no identical Arctic widgets on touch are promised. Native catalog federation and menu adapters are source candidates; publication integration and fresh-device validation remain open in [issue #41](https://github.com/Serph91P/repository.serph91p/issues/41).
+
 ## Fuer Entwickler
 
 Die Repository-Aktualiserung erfolgt automatisch ueber `repository_dispatch` Events von den einzelnen Addon-Repos.
