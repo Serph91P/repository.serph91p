@@ -18,7 +18,7 @@ The reusable workflow requires these inputs:
 | `validation_workflow` | Exact source validation workflow name. |
 | `validation_workflow_path` | Exact canonical source workflow path reported by the Actions Runs API, without a ref suffix. |
 | `validation_event` | Exact source event, restricted to `push` or `workflow_dispatch`. |
-| `expected_branch` | Must be `develop`. |
+| `expected_branch` | Target-owned source branch: `master` for YouTube, `main` for GronkhTV, otherwise `develop`. |
 | `addon_id` | Exact configured add-on ID. |
 | `addon_version` | Exact configured add-on version. |
 | `asset_name` | Exact deterministic package filename, `<addon_id>-<addon_version>.zip`. |
@@ -26,7 +26,8 @@ The reusable workflow requires these inputs:
 | `publication_id` | Exact publication identity, `<addon_id>@<addon_version>`. |
 
 A source workflow can enforce the validation and packaging order as follows. The
-workflow must run on a `push` or explicit `workflow_dispatch` for `develop`, and
+workflow must run on a `push` or explicit `workflow_dispatch` for its target-owned
+publication branch (`master` for YouTube, `main` for GronkhTV, otherwise `develop`), and
 `validation_workflow_path` must be fixed to the approved canonical API path.
 The branch is bound separately through `expected_branch`. `workflow_dispatch` provides a bootstrap after the notifier has
 first been deployed to the default branch.
@@ -87,7 +88,7 @@ identity from the GitHub context, fixes the workflow name, path, and branch,
 and forwards only package outputs. It performs no direct dispatch.
 
 Call the notifier only after a successful completed `push` or explicit
-`workflow_dispatch` validation run for `develop`. The notifier independently
+`workflow_dispatch` validation run for the configured publication branch. The notifier independently
 verifies that exact allowlisted event, branch, conclusion,
 workflow name, workflow path, run ID, source repository, and head SHA. It
 paginates all run artifacts, requires exactly one live `addon-package` artifact
