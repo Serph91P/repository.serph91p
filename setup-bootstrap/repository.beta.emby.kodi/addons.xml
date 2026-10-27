@@ -1,0 +1,50 @@
+<?xml version='1.0' encoding='utf-8'?>
+<addons>
+    <addon id="repository.beta.emby.kodi" name="Kodi Emby Beta Addons" version="1.0.11" provider-name="">
+        <requires>
+            <import addon="xbmc.addon" version="12.0.0" />
+        </requires>
+        <extension point="xbmc.addon.repository" name="Kodi Emby Beta Addons Repository">
+            <dir>
+                <info compressed="false">https://embydata.com/downloads/addons/xbmb3c/multi-repo/repositories/addons.xml</info>
+                <checksum>https://embydata.com/downloads/addons/xbmb3c/multi-repo/repositories/addons.xml.md5</checksum>
+                <datadir zip="true">https://embydata.com/downloads/addons/xbmb3c/multi-repo/repositories/</datadir>
+            </dir>
+            <dir minversion="20.999.0">
+                <info compressed="false">https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v21_omega/addons.xml</info>
+                <checksum>https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v21_omega/addons.xml.md5</checksum>
+                <datadir zip="true">https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v21_omega/</datadir>
+            </dir>
+            <dir minversion="19.999.0">
+                <info compressed="false">https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v20_nexus/addons.xml</info>
+                <checksum>https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v20_nexus/addons.xml.md5</checksum>
+                <datadir zip="true">https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v20_nexus/</datadir>
+            </dir>
+            <dir minversion="18.999.0">
+                <info compressed="false">https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v19_matrix/addons.xml</info>
+                <checksum>https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v19_matrix/addons.xml.md5</checksum>
+                <datadir zip="true">https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v19_matrix/</datadir>
+            </dir>
+            <dir minversion="17.999.0">
+                <info compressed="false">https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v18_leia/addons.xml</info>
+                <checksum>https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v18_leia/addons.xml.md5</checksum>
+                <datadir zip="true">https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v18_leia/</datadir>
+            </dir>
+            <dir minversion="16.999.0">
+                <info compressed="false">https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v17_krypton/addons.xml</info>
+                <checksum>https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v17_krypton/addons.xml.md5</checksum>
+                <datadir zip="true">https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v17_krypton/</datadir>
+            </dir>
+        </extension>
+        <extension point="xbmc.addon.metadata">
+            <summary>Kodi Emby Addon Repository</summary>
+            <description>This repo contains beta add-ons for Emby related support</description>
+            <disclaimer />
+            <platform>all</platform>
+            <assets>
+                <icon>resources/icon.png</icon>
+                <fanart>resources/fanart.jpg</fanart>
+            </assets>
+        </extension>
+    </addon>
+</addons>

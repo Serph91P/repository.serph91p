@@ -1,0 +1,1124 @@
+{
+  "locale": {
+    "locale.activekeyboardlayout": "English QWERTY",
+    "locale.audiolanguage": "original",
+    "locale.charset": "ISO-8859-2",
+    "locale.country": "Central Europe",
+    "locale.keyboardlayouts": [
+      "German QWERTZ"
+    ],
+    "locale.language": "resource.language.en_gb",
+    "locale.longdateformat": "regional",
+    "locale.shortdateformat": "regional",
+    "locale.speedunit": "regional",
+    "locale.subtitlelanguage": "English",
+    "locale.temperatureunit": "regional",
+    "locale.timeformat": "regional",
+    "locale.use24hourclock": "regional"
+  },
+  "schema": 1,
+  "settings": {
+    "HomeSwitcher.1101.Name": {
+      "type": "string",
+      "value": "Series"
+    },
+    "HomeSwitcher.1101.Shortcut.icon": {
+      "type": "string",
+      "value": "special://skin/extras/icons/tv.png"
+    },
+    "HomeSwitcher.1101.Shortcut.label": {
+      "type": "string",
+      "value": "TV shows"
+    },
+    "HomeSwitcher.1101.Shortcut.target": {
+      "type": "string",
+      "value": "videos"
+    },
+    "HomeSwitcher.1101.Spotlight.Label": {
+      "type": "string",
+      "value": "None"
+    },
+    "HomeSwitcher.1101.Spotlight.Limit": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.1101.Spotlight.Path": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.1101.Spotlight.SortMethod": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.1101.Spotlight.SortOrder": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.1101.Spotlight.icon": {
+      "type": "string",
+      "value": "special://skin/extras/icons/watched-hide.png"
+    },
+    "HomeSwitcher.1102.Name": {
+      "type": "string",
+      "value": "Twitch"
+    },
+    "HomeSwitcher.1102.Shortcut.label": {
+      "type": "string",
+      "value": "Twitch"
+    },
+    "HomeSwitcher.1102.Shortcut.target": {
+      "type": "string",
+      "value": "videos"
+    },
+    "HomeSwitcher.1102.Spotlight.Label": {
+      "type": "string",
+      "value": "None"
+    },
+    "HomeSwitcher.1102.Spotlight.Limit": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.1102.Spotlight.Path": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.1102.Spotlight.SortMethod": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.1102.Spotlight.SortOrder": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.1102.Spotlight.icon": {
+      "type": "string",
+      "value": "special://skin/extras/icons/watched-hide.png"
+    },
+    "HomeSwitcher.1103.Name": {
+      "type": "string",
+      "value": "YouTube"
+    },
+    "HomeSwitcher.1103.Shortcut.label": {
+      "type": "string",
+      "value": "YouTube"
+    },
+    "HomeSwitcher.1103.Shortcut.target": {
+      "type": "string",
+      "value": "videos"
+    },
+    "HomeSwitcher.1103.Spotlight.Label": {
+      "type": "string",
+      "value": "None"
+    },
+    "HomeSwitcher.1103.Spotlight.Limit": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.1103.Spotlight.Path": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.1103.Spotlight.SortMethod": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.1103.Spotlight.SortOrder": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.1103.Spotlight.icon": {
+      "type": "string",
+      "value": "special://skin/extras/icons/watched-hide.png"
+    },
+    "HomeSwitcher.1104.Name": {
+      "type": "string",
+      "value": "Lokale Medien"
+    },
+    "HomeSwitcher.1104.Shortcut.Icon": {
+      "type": "string",
+      "value": "special://skin/extras/icons/folder.png"
+    },
+    "HomeSwitcher.1104.Shortcut.Label": {
+      "type": "string",
+      "value": "Lokale Medien"
+    },
+    "HomeSwitcher.1104.Shortcut.Target": {
+      "type": "string",
+      "value": "videos"
+    },
+    "HomeSwitcher.1104.Spotlight.Label": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.1107.Shortcut.Path": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.Home.Shortcut.Path": {
+      "type": "string",
+      "value": "ActivateWindow(1181)"
+    },
+    "HomeSwitcher.Home.Spotlight.Label": {
+      "type": "string",
+      "value": "None"
+    },
+    "HomeSwitcher.Home.Spotlight.Path": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.Home.Spotlight.Target": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.home.Name": {
+      "type": "string",
+      "value": "Movies"
+    },
+    "HomeSwitcher.home.Spotlight.Limit": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.home.Spotlight.SortMethod": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.home.Spotlight.SortOrder": {
+      "type": "string",
+      "value": ""
+    },
+    "HomeSwitcher.home.Spotlight.icon": {
+      "type": "string",
+      "value": "special://skin/extras/icons/watched-hide.png"
+    },
+    "Hub.Home.DisableSubmenu": {
+      "type": "bool",
+      "value": "true"
+    },
+    "InfoPanel.FullSwitch": {
+      "type": "string",
+      "value": "Full"
+    },
+    "OSD_Timeout": {
+      "type": "string",
+      "value": "3"
+    },
+    "Options.DisableBottomTray": {
+      "type": "bool",
+      "value": "true"
+    },
+    "OptionsTiles.01.Icon": {
+      "type": "string",
+      "value": ""
+    },
+    "OptionsTiles.01.Label": {
+      "type": "string",
+      "value": ""
+    },
+    "OptionsTiles.02.Icon": {
+      "type": "string",
+      "value": ""
+    },
+    "OptionsTiles.02.Label": {
+      "type": "string",
+      "value": ""
+    },
+    "OptionsTiles.03.Icon": {
+      "type": "string",
+      "value": ""
+    },
+    "OptionsTiles.03.Label": {
+      "type": "string",
+      "value": ""
+    },
+    "OptionsTiles.04.Icon": {
+      "type": "string",
+      "value": ""
+    },
+    "OptionsTiles.04.Label": {
+      "type": "string",
+      "value": ""
+    },
+    "SkinHelper.ShowInfoAtPlaybackStart": {
+      "type": "string",
+      "value": ""
+    },
+    "SkinHelper.StudioLogos.Path": {
+      "type": "string",
+      "value": ""
+    },
+    "Startup.VideoPath": {
+      "type": "string",
+      "value": ""
+    },
+    "TMDbHelper.Blur.Radius": {
+      "type": "string",
+      "value": ""
+    },
+    "TMDbHelper.Blur.Size": {
+      "type": "string",
+      "value": ""
+    },
+    "TMDbHelper.Corner.Radius": {
+      "type": "string",
+      "value": "20"
+    },
+    "TMDbHelper.Date.Format": {
+      "type": "string",
+      "value": ""
+    },
+    "TMDbHelper.DirectCallAuto": {
+      "type": "bool",
+      "value": "true"
+    },
+    "TMDbHelper.DisableExtendedProperties": {
+      "type": "bool",
+      "value": "true"
+    },
+    "TMDbHelper.EnableCurrentWindowImages": {
+      "type": "bool",
+      "value": "true"
+    },
+    "TMDbHelper.MonitorContainer": {
+      "type": "string",
+      "value": ""
+    },
+    "TMDbHelper.UseLocalWidgetContainer": {
+      "type": "bool",
+      "value": "true"
+    },
+    "autoscrolltime": {
+      "type": "string",
+      "value": ""
+    },
+    "background.dialogimage": {
+      "type": "string",
+      "value": "Adaptive"
+    },
+    "background.disablevideo": {
+      "type": "bool",
+      "value": "false"
+    },
+    "background.extrafanart": {
+      "type": "bool",
+      "value": "false"
+    },
+    "background.image": {
+      "type": "string",
+      "value": "special://skin/extras/backgrounds/blur/orange_blur.jpg"
+    },
+    "background.visualisation.disabled": {
+      "type": "bool",
+      "value": "false"
+    },
+    "contextmenu.disableartwork": {
+      "type": "bool",
+      "value": "false"
+    },
+    "contextmenu.disableoptionstray": {
+      "type": "bool",
+      "value": "false"
+    },
+    "customrating.movies.item01": {
+      "type": "string",
+      "value": "Trakt"
+    },
+    "customrating.movies.item02": {
+      "type": "string",
+      "value": "Metacritic"
+    },
+    "customrating.movies.item03": {
+      "type": "string",
+      "value": ""
+    },
+    "customrating.tvshows.item01": {
+      "type": "string",
+      "value": "Trakt"
+    },
+    "customrating.tvshows.item02": {
+      "type": "string",
+      "value": "Metacritic"
+    },
+    "customrating.tvshows.item03": {
+      "type": "string",
+      "value": ""
+    },
+    "debuggrid": {
+      "type": "bool",
+      "value": "false"
+    },
+    "debuginfo": {
+      "type": "bool",
+      "value": "false"
+    },
+    "defaultconfig.initdone": {
+      "type": "bool",
+      "value": "true"
+    },
+    "dialoginfo.movies.item01": {
+      "type": "string",
+      "value": "Trailer"
+    },
+    "dialoginfo.movies.item02": {
+      "type": "string",
+      "value": "Trakt"
+    },
+    "dialoginfo.movies.item03": {
+      "type": "string",
+      "value": "Plot"
+    },
+    "dialoginfo.others.item01": {
+      "type": "string",
+      "value": "Trailer"
+    },
+    "dialoginfo.others.item02": {
+      "type": "string",
+      "value": "Trakt"
+    },
+    "dialoginfo.others.item03": {
+      "type": "string",
+      "value": "Plot"
+    },
+    "disable.holidaytheme.additionalicons": {
+      "type": "bool",
+      "value": "false"
+    },
+    "disablelandscapeart": {
+      "type": "bool",
+      "value": "false"
+    },
+    "enableartworkdownloader": {
+      "type": "bool",
+      "value": "false"
+    },
+    "enableholidaytheme": {
+      "type": "bool",
+      "value": "false"
+    },
+    "focuscolor.name": {
+      "type": "string",
+      "value": "fff4511e"
+    },
+    "footer.disablenowplaying": {
+      "type": "bool",
+      "value": "false"
+    },
+    "footer.disablestudio": {
+      "type": "bool",
+      "value": "false"
+    },
+    "footer.enablecodecs": {
+      "type": "bool",
+      "value": "false"
+    },
+    "header.disableweather": {
+      "type": "bool",
+      "value": "true"
+    },
+    "holidaymode.australia": {
+      "type": "bool",
+      "value": "true"
+    },
+    "holidaymode.frost": {
+      "type": "bool",
+      "value": "true"
+    },
+    "home.firstrun": {
+      "type": "bool",
+      "value": "true"
+    },
+    "home.label": {
+      "type": "string",
+      "value": ""
+    },
+    "homeswitcher.1101.icon": {
+      "type": "string",
+      "value": "special://skin/extras/icons/director.png"
+    },
+    "homeswitcher.1101.mode": {
+      "type": "string",
+      "value": "Standard"
+    },
+    "homeswitcher.1101.spotlight.target": {
+      "type": "string",
+      "value": ""
+    },
+    "homeswitcher.1101.toggle": {
+      "type": "string",
+      "value": "true"
+    },
+    "homeswitcher.1102.icon": {
+      "type": "string",
+      "value": "special://skin/extras/icons/twitch.png"
+    },
+    "homeswitcher.1102.mode": {
+      "type": "string",
+      "value": "Standard"
+    },
+    "homeswitcher.1102.spotlight.target": {
+      "type": "string",
+      "value": ""
+    },
+    "homeswitcher.1102.toggle": {
+      "type": "string",
+      "value": "true"
+    },
+    "homeswitcher.1103.icon": {
+      "type": "string",
+      "value": "special://skin/extras/icons/youtube.png"
+    },
+    "homeswitcher.1103.mode": {
+      "type": "string",
+      "value": "Standard"
+    },
+    "homeswitcher.1103.spotlight.target": {
+      "type": "string",
+      "value": ""
+    },
+    "homeswitcher.1103.toggle": {
+      "type": "string",
+      "value": "true"
+    },
+    "homeswitcher.1104.icon": {
+      "type": "string",
+      "value": "special://skin/extras/icons/folder.png"
+    },
+    "homeswitcher.1104.mode": {
+      "type": "string",
+      "value": "Standard"
+    },
+    "homeswitcher.1104.spotlight.target": {
+      "type": "string",
+      "value": ""
+    },
+    "homeswitcher.1104.toggle": {
+      "type": "string",
+      "value": ""
+    },
+    "homeswitcher.1105.toggle": {
+      "type": "string",
+      "value": ""
+    },
+    "homeswitcher.1106.mode": {
+      "type": "string",
+      "value": "Standard"
+    },
+    "homeswitcher.1106.toggle": {
+      "type": "string",
+      "value": ""
+    },
+    "homeswitcher.1106.upnextmode": {
+      "type": "string",
+      "value": "library_nextaired"
+    },
+    "homeswitcher.1107.mode": {
+      "type": "string",
+      "value": "Standard"
+    },
+    "homeswitcher.1107.shortcut.target": {
+      "type": "string",
+      "value": ""
+    },
+    "homeswitcher.1107.toggle": {
+      "type": "string",
+      "value": "true"
+    },
+    "homeswitcher.1108.mode": {
+      "type": "string",
+      "value": "Wall"
+    },
+    "homeswitcher.1108.toggle": {
+      "type": "string",
+      "value": ""
+    },
+    "homeswitcher.1109.toggle": {
+      "type": "string",
+      "value": ""
+    },
+    "homeswitcher.disabledate": {
+      "type": "bool",
+      "value": "false"
+    },
+    "homeswitcher.disablefirstwidgetfocus": {
+      "type": "bool",
+      "value": "true"
+    },
+    "homeswitcher.disableheader": {
+      "type": "bool",
+      "value": "false"
+    },
+    "homeswitcher.disablesearch": {
+      "type": "bool",
+      "value": "false"
+    },
+    "homeswitcher.enableicons": {
+      "type": "bool",
+      "value": "true"
+    },
+    "homeswitcher.home.icon": {
+      "type": "string",
+      "value": "special://skin/extras/icons/film.png"
+    },
+    "homeswitcher.home.mode": {
+      "type": "string",
+      "value": "Standard"
+    },
+    "homeswitcher.home.shortcut.target": {
+      "type": "string",
+      "value": ""
+    },
+    "homeswitcher.home.toggle": {
+      "type": "string",
+      "value": ""
+    },
+    "homeswitcher.loopback": {
+      "type": "bool",
+      "value": "false"
+    },
+    "homeswitcher.search.mode": {
+      "type": "string",
+      "value": "Combined"
+    },
+    "homeswitcher.vertical": {
+      "type": "bool",
+      "value": "true"
+    },
+    "hub.1107.disablechannels": {
+      "type": "bool",
+      "value": "false"
+    },
+    "hub.1107.disablegroups": {
+      "type": "bool",
+      "value": "false"
+    },
+    "hub.1107.disablerecordings": {
+      "type": "bool",
+      "value": "true"
+    },
+    "hub.1107.disablesearch": {
+      "type": "bool",
+      "value": "true"
+    },
+    "hub.1107.squarechannels": {
+      "type": "bool",
+      "value": "false"
+    },
+    "hub.1108.disablegame": {
+      "type": "bool",
+      "value": "false"
+    },
+    "hub.1108.disablemusic": {
+      "type": "bool",
+      "value": "false"
+    },
+    "hub.1108.disablepicture": {
+      "type": "bool",
+      "value": "false"
+    },
+    "hub.1108.disableprogram": {
+      "type": "bool",
+      "value": "false"
+    },
+    "hub.1108.disablevideo": {
+      "type": "bool",
+      "value": "false"
+    },
+    "indicator.disablecollection": {
+      "type": "bool",
+      "value": "false"
+    },
+    "indicator.disableepisodes": {
+      "type": "bool",
+      "value": "false"
+    },
+    "indicator.disablelatest": {
+      "type": "bool",
+      "value": "false"
+    },
+    "indicator.disablelibrary": {
+      "type": "bool",
+      "value": "false"
+    },
+    "indicator.disableprogress": {
+      "type": "bool",
+      "value": "false"
+    },
+    "indicator.disablepvrguidecatchup": {
+      "type": "bool",
+      "value": "false"
+    },
+    "indicator.disablewatched": {
+      "type": "bool",
+      "value": "false"
+    },
+    "indicator.enableunwatchedcount": {
+      "type": "bool",
+      "value": "true"
+    },
+    "indicator.episodetypebanner": {
+      "type": "bool",
+      "value": "false"
+    },
+    "indicator.movieversionbanner": {
+      "type": "bool",
+      "value": "false"
+    },
+    "indicator.traktfavourites": {
+      "type": "bool",
+      "value": "false"
+    },
+    "indicator.traktwatchlist": {
+      "type": "bool",
+      "value": "false"
+    },
+    "info.enablestylisedtitlesbackgrounds": {
+      "type": "bool",
+      "value": "false"
+    },
+    "info.uselocalcast": {
+      "type": "bool",
+      "value": "false"
+    },
+    "infotags.disablestarrating": {
+      "type": "bool",
+      "value": "false"
+    },
+    "infotags.enableaudiochannels": {
+      "type": "bool",
+      "value": "false"
+    },
+    "infotags.enablehdr": {
+      "type": "bool",
+      "value": "false"
+    },
+    "labels.autoscroll": {
+      "type": "bool",
+      "value": "false"
+    },
+    "mouse.pointersize": {
+      "type": "string",
+      "value": ""
+    },
+    "mousepointercolor.name": {
+      "type": "string",
+      "value": ""
+    },
+    "navigation.disablealphabetjump": {
+      "type": "bool",
+      "value": "false"
+    },
+    "navigation.disablecategoriesselectdialog": {
+      "type": "bool",
+      "value": "false"
+    },
+    "navigation.onback": {
+      "type": "string",
+      "value": "Parent"
+    },
+    "optionstiles.01.include": {
+      "type": "string",
+      "value": "NowPlaying"
+    },
+    "optionstiles.01.path": {
+      "type": "string",
+      "value": ""
+    },
+    "optionstiles.01.target": {
+      "type": "string",
+      "value": ""
+    },
+    "optionstiles.02.include": {
+      "type": "string",
+      "value": "Settings"
+    },
+    "optionstiles.02.path": {
+      "type": "string",
+      "value": ""
+    },
+    "optionstiles.02.target": {
+      "type": "string",
+      "value": ""
+    },
+    "optionstiles.03.include": {
+      "type": "string",
+      "value": "SystemInfo"
+    },
+    "optionstiles.03.path": {
+      "type": "string",
+      "value": ""
+    },
+    "optionstiles.03.target": {
+      "type": "string",
+      "value": ""
+    },
+    "optionstiles.04.include": {
+      "type": "string",
+      "value": "SystemInfo"
+    },
+    "optionstiles.04.path": {
+      "type": "string",
+      "value": ""
+    },
+    "optionstiles.04.target": {
+      "type": "string",
+      "value": ""
+    },
+    "optionstiles.layout": {
+      "type": "string",
+      "value": "3"
+    },
+    "osd.autoonpause": {
+      "type": "string",
+      "value": "Info"
+    },
+    "osd.autoonpause.delay": {
+      "type": "string",
+      "value": "3s"
+    },
+    "osd.disableplotratingsoninfo": {
+      "type": "bool",
+      "value": "false"
+    },
+    "osd.displayinfooncontrols": {
+      "type": "bool",
+      "value": "false"
+    },
+    "osd.infooverlay.disablelandscapeoninfo": {
+      "type": "bool",
+      "value": "false"
+    },
+    "osd.infooverlay.disableplotratingsoninfo": {
+      "type": "bool",
+      "value": "false"
+    },
+    "osd.ondown.disable1140": {
+      "type": "bool",
+      "value": "false"
+    },
+    "osd.ondown.disable1141": {
+      "type": "bool",
+      "value": "false"
+    },
+    "osd.ondown.disablepvrosdchannels": {
+      "type": "bool",
+      "value": "false"
+    },
+    "osd.ondown.disablepvrosdguide": {
+      "type": "bool",
+      "value": "false"
+    },
+    "osd.ondown.disablevideobookmarks": {
+      "type": "bool",
+      "value": "false"
+    },
+    "plotline.enablegenre": {
+      "type": "bool",
+      "value": "false"
+    },
+    "plotline.movie": {
+      "type": "string",
+      "value": ""
+    },
+    "plotline.tvshow": {
+      "type": "string",
+      "value": ""
+    },
+    "pvr.disablegenrecolours": {
+      "type": "bool",
+      "value": "false"
+    },
+    "ratings.enablecolor": {
+      "type": "bool",
+      "value": "false"
+    },
+    "revertselectedtext": {
+      "type": "bool",
+      "value": "true"
+    },
+    "search.disablecombined": {
+      "type": "bool",
+      "value": "false"
+    },
+    "search.disablediscover": {
+      "type": "bool",
+      "value": "false"
+    },
+    "search.disablediscover-mdblists": {
+      "type": "bool",
+      "value": "false"
+    },
+    "search.disablediscover-moviedecades": {
+      "type": "bool",
+      "value": "false"
+    },
+    "search.disablediscover-moviekeywords": {
+      "type": "bool",
+      "value": "false"
+    },
+    "seasonaltheme.christmastheme": {
+      "type": "string",
+      "value": ""
+    },
+    "seasonaltheme.disableflyby": {
+      "type": "bool",
+      "value": "false"
+    },
+    "seasonaltheme.disablehalloween": {
+      "type": "bool",
+      "value": "false"
+    },
+    "seasonaltheme.disableloop": {
+      "type": "bool",
+      "value": "false"
+    },
+    "seasonaltheme.disableoverlay": {
+      "type": "bool",
+      "value": "false"
+    },
+    "seasonaltheme.disablesummer": {
+      "type": "bool",
+      "value": "false"
+    },
+    "seasonaltheme.enable": {
+      "type": "bool",
+      "value": "false"
+    },
+    "seasonaltheme.propsdensity": {
+      "type": "string",
+      "value": ""
+    },
+    "seekbar.timedisplay": {
+      "type": "string",
+      "value": ""
+    },
+    "skin.flixart.size": {
+      "type": "string",
+      "value": ""
+    },
+    "skin.settingslevel": {
+      "type": "string",
+      "value": "3"
+    },
+    "skinhelper.autoclosemusicosd": {
+      "type": "string",
+      "value": ""
+    },
+    "skinhelper.autoclosevideoosd": {
+      "type": "string",
+      "value": ""
+    },
+    "skinhelper.disablescreensaveronfullscreenmusic": {
+      "type": "bool",
+      "value": "false"
+    },
+    "skinhelper.enableanimatedposters": {
+      "type": "bool",
+      "value": "false"
+    },
+    "skinhelper.enableextendedart": {
+      "type": "bool",
+      "value": "false"
+    },
+    "skinhelper.enableextrafanart": {
+      "type": "bool",
+      "value": "false"
+    },
+    "skinhelper.enableextraposter": {
+      "type": "bool",
+      "value": "false"
+    },
+    "skinhelper.enablemusicart": {
+      "type": "bool",
+      "value": "false"
+    },
+    "skinhelper.enablepvrthumbs": {
+      "type": "bool",
+      "value": "false"
+    },
+    "skinhelper.forcedviews.enabled": {
+      "type": "bool",
+      "value": "false"
+    },
+    "skinuserlogin.disabled": {
+      "type": "bool",
+      "value": "false"
+    },
+    "skinuserlogin.startuploginscreen": {
+      "type": "bool",
+      "value": "false"
+    },
+    "skinvariables.skinuser": {
+      "type": "string",
+      "value": ""
+    },
+    "skinvariables.skinuser.icon": {
+      "type": "string",
+      "value": ""
+    },
+    "skinvariables.skinuser.name": {
+      "type": "string",
+      "value": ""
+    },
+    "spotlight.enableslide": {
+      "type": "bool",
+      "value": "false"
+    },
+    "spotlight.usemenubutton": {
+      "type": "bool",
+      "value": "true"
+    },
+    "startup.disablewaitforload": {
+      "type": "bool",
+      "value": "false"
+    },
+    "startup.enablehubpreloading": {
+      "type": "bool",
+      "value": "false"
+    },
+    "startup.imagefolder": {
+      "type": "string",
+      "value": ""
+    },
+    "submenu.enablesidemode": {
+      "type": "bool",
+      "value": "false"
+    },
+    "textboxes.disableautoscroll": {
+      "type": "bool",
+      "value": "false"
+    },
+    "textboxes.disablefakebox": {
+      "type": "bool",
+      "value": "false"
+    },
+    "tmdbhelper.disableartwork": {
+      "type": "bool",
+      "value": "false"
+    },
+    "tmdbhelper.disablepvr": {
+      "type": "bool",
+      "value": "false"
+    },
+    "tmdbhelper.disableratings": {
+      "type": "bool",
+      "value": "false"
+    },
+    "tmdbhelper.enableblur": {
+      "type": "bool",
+      "value": "true"
+    },
+    "tmdbhelper.enablecolors": {
+      "type": "bool",
+      "value": "false"
+    },
+    "tmdbhelper.enablecrop": {
+      "type": "bool",
+      "value": "true"
+    },
+    "tmdbhelper.enabledata": {
+      "type": "bool",
+      "value": "true"
+    },
+    "tmdbhelper.enabledesaturate": {
+      "type": "bool",
+      "value": "false"
+    },
+    "tmdbhelper.enabletranslationproperties": {
+      "type": "bool",
+      "value": "false"
+    },
+    "tmdbhelper.forcewidgetcontainer": {
+      "type": "bool",
+      "value": "false"
+    },
+    "tmdbhelper.service": {
+      "type": "bool",
+      "value": "true"
+    },
+    "videoinfo.widgets.disablecollection": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.disablecomments": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.disablecreator": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.disablecrew": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.disabledirector": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.disableepisodes": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.disablegallery": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.disableonlinegallery": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.disablerecommendations": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.disableseasons": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.disablestarring": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.disablestudio": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.disablevideos": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.disablewriter": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.disableyear": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoinfo.widgets.enablelocalcollection": {
+      "type": "bool",
+      "value": "false"
+    },
+    "videoosd.personcredits.castcrew": {
+      "type": "string",
+      "value": "cast"
+    },
+    "view.usedetailedlistlabels": {
+      "type": "bool",
+      "value": "true"
+    },
+    "watchedprogresscolor.name": {
+      "type": "string",
+      "value": ""
+    },
+    "widgets.disablenoresultsitem": {
+      "type": "bool",
+      "value": "false"
+    },
+    "widgets.enableshowmore": {
+      "type": "bool",
+      "value": "false"
+    }
+  },
+  "skin": "skin.arctic.fuse.3",
+  "skin_version": "3.3.12"
+}
