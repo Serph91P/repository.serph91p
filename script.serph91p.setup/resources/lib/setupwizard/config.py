@@ -49,6 +49,11 @@ POLICIES['touch-common-v2'] = POLICIES['touch-common'] | {
     COMMON_SHORTCUTS + 'skin.estuary.modv2-' + name + '.DATA.xml'
     for name in ('mainmenu','movies','series','twitch','youtube','livetv')}
 COMMON_POLICY_IDS = {'arctic':'arctic-common', 'amber':'amber-common', 'touch':'touch-common-v2'}
+for _key,_skin in (('rotary','skin.rotary'),('nimbus','skin.nimbus')):
+    _paths={'addon_data/script.serph91p.setup/bindings-'+_key+'.json','addon_data/'+_skin+'/settings.xml'}
+    if _key=='nimbus':_paths|={'addon_data/script.nimbus.helper/cpath_cache.db','keymaps/nimbus_touch_submenu.xml'}
+    POLICIES[_key+'-common']=_paths
+    COMMON_POLICY_IDS[_key]=_key+'-common'
 ALL_TARGETS = set().union(*POLICIES.values())
 SAFE_SETTINGS = {
     "homeswitcher.vertical": "true",
@@ -323,14 +328,14 @@ def _validate_manifest(profile: Path, backup: Path):
         policy = manifest['profile']
     elif (set(manifest) == {'schema', 'profile', 'files'}
           and manifest['schema'] == 4 and manifest['profile'] in
-          ('arctic-common', 'amber-common', 'touch-common')):
+          ('arctic-common', 'amber-common', 'touch-common', 'rotary-common', 'nimbus-common')):
         policy = manifest['profile']
     elif (set(manifest) == {'schema', 'profile', 'files'}
           and manifest['schema'] == 5 and manifest['profile'] == 'touch-common-v2'):
         policy = manifest['profile']
     elif (set(manifest) == {'schema', 'profile', 'files', 'runtime'}
           and ((manifest['schema'] == 7 and manifest['profile'] in
-                ('arctic-common', 'amber-common', 'touch-common'))
+                ('arctic-common', 'amber-common', 'touch-common', 'rotary-common', 'nimbus-common'))
                or (manifest['schema'] == 8 and manifest['profile'] == 'touch-common-v2'))):
         policy = manifest['profile']
         runtime = manifest['runtime']

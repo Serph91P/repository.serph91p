@@ -66,15 +66,15 @@ class SetupPublicationTests(unittest.TestCase):
     def test_staged_site_wizard_bootstrap_originals_not_mirrored(self):
         self.build()
         site = self.root / '_site'
-        package = site / setup.ADDON_ID / (setup.ADDON_ID + '-0.4.1.zip')
+        package = site / setup.ADDON_ID / (setup.ADDON_ID + '-' + setup.VERSION + '.zip')
         self.assertTrue(package.is_file())
         self.assertIn(package.name, (package.parent / 'index.html').read_text())
         ids = {a.get('id') for a in ET.parse(site / 'addons.xml').getroot()}
         self.assertEqual(ids, {setup.ADDON_ID, 'repository.serph91p', 'plugin.unrelated'})
         setup.validate_site(site)
-        self.assertEqual(len(list((site / 'setup-bootstrap').rglob('addons.xml*'))), 6)
+        self.assertEqual(len(list((site / 'setup-bootstrap').rglob('addons.xml*'))), len(setup.BOOTSTRAP_SHA256))
         self.assertFalse(list((site / 'setup-bootstrap').rglob('*.zip')))
-        for source in ('repository.jurialmunkey', 'repository.beta.emby.kodi', 'repository.kodinerds'):
+        for source in ('repository.jurialmunkey', 'repository.beta.emby.kodi', 'repository.kodinerds','repository.adamsbuilds'):
             self.assertFalse((site / source).exists())
             catalog = ET.parse(site / 'setup-bootstrap' / source / 'addons.xml').getroot()
             self.assertEqual([a.get('id') for a in catalog], [source])
@@ -178,7 +178,6 @@ class SetupPublicationTests(unittest.TestCase):
                 self.build()
 
     def test_external_immutable_build_includes_first_party_without_forged_evidence(self):
-        import datetime
         from tests.test_immutable_publication import (
             _make_addon_zip, _make_evidence_archive, _make_package_archive,
             _make_mock_api_responses, _valid_dispatch, _valid_evidence, _zip_sha256)
@@ -197,21 +196,18 @@ class SetupPublicationTests(unittest.TestCase):
                   'validation_workflow_id': 211623879, 'publication_branch': 'develop',
                   'package_artifact_name': 'addon-package', 'evidence_artifact_name': 'validation-evidence',
                   'runtime_entries': ('addon.xml', 'changelog.txt', 'resources/')}
-        strict_fetch = builder.fetch_validated_run_artifacts
-        # Explicit fixture-time injection; the complete production validator runs.
-        def at_fixture_time(*args):
-            return strict_fetch(*args, now=datetime.datetime(2026, 7, 15, tzinfo=datetime.timezone.utc))
+        # Main's shared fixture creates live artifact dates; exercise the real
+        # production validator and its actual expiry clock without overriding it.
         with (mock.patch.object(builder, 'ADDONS', [config]),
               mock.patch.object(builder, 'source_github_api_get', side_effect=api_get),
               mock.patch.object(builder, 'source_download_file', side_effect=download),
-              mock.patch.object(builder, 'fetch_validated_run_artifacts', side_effect=at_fixture_time),
               mock.patch.dict('os.environ', {'SOURCE_GITHUB_TOKEN': 'offline-fixture-only'})):
             builder.build_immutable_repository(_valid_dispatch(), self.root, target_commit=self.sha)
         site = self.root / '_site'
         setup.validate_site(site)
         ids = {a.get('id') for a in ET.parse(site / 'addons.xml').getroot()}
         self.assertEqual(ids, {'plugin.video.twitch', 'plugin.unrelated', setup.ADDON_ID, 'repository.serph91p'})
-        self.assertTrue((site / setup.ADDON_ID / (setup.ADDON_ID + '-0.4.1.zip')).is_file())
+        self.assertTrue((site / setup.ADDON_ID / (setup.ADDON_ID + '-' + setup.VERSION + '.zip')).is_file())
 
     def test_workflow_has_explicit_nonrecursive_target_source_mode(self):
         workflow = (ROOT / '.github/workflows/publish-setup-source.yml').read_text()

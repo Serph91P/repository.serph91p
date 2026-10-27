@@ -13,9 +13,12 @@ ORIGINS = {
     'resource.font.robotocjksc': 'repository.jurialmunkey',
     'plugin.service.emby-next-gen': 'repository.beta.emby.kodi',
     'skin.estuary.modv2': 'repository.kodinerds',
+    'skin.rotary': 'repository.adamsbuilds',
+    'skin.nimbus': 'repository.adamsbuilds',
+    'script.nimbus.helper': 'repository.adamsbuilds',
     'skin.amber': 'repository.xbmc.org',
     'script.skinshortcuts': 'repository.xbmc.org',
-    'plugin.video.youtube': 'repository.xbmc.org',
+    'plugin.video.youtube': 'repository.serph91p',
     'pvr.iptvsimple': 'repository.xbmc.org',
     'resource.images.weathericons.white': 'repository.xbmc.org',
     'resource.images.studios.coloured': 'repository.xbmc.org',
@@ -26,7 +29,7 @@ ORIGINS = {
 }
 for _repository in ('repository.jurialmunkey', 'repository.beta.emby.kodi',
                     'repository.kodinerds', 'repository.serph91p', 'repository.xbmc.org',
-                    'repository.libreelec.tv'):
+                    'repository.libreelec.tv', 'repository.adamsbuilds'):
     ORIGINS[_repository] = _repository
 
 
@@ -76,8 +79,11 @@ class SQLiteOriginReader:
                 'SELECT addonID, origin FROM installed WHERE addonID = ? LIMIT 2',
                 (addon_id,)).fetchall()
             if (len(rows) != 1 or rows[0][0] != addon_id
-                    or not isinstance(rows[0][1], str) or not rows[0][1]):
+                    or not isinstance(rows[0][1], str)):
                 raise OriginUnavailable('Installed origin missing or ambiguous')
+            # An exact readable empty string identifies an unassigned/ZIP
+            # origin. Strict readiness still rejects it, but migration can
+            # distinguish this known state from a failed database inspection.
             return rows[0][1]
         except OriginUnavailable:
             raise

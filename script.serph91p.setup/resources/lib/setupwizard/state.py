@@ -18,7 +18,8 @@ from . import regional
 PATH = 'addon_data/script.serph91p.setup/setup-state.json'
 
 SKIN_SETTINGS = frozenset(('addon_data/skin.arctic.fuse.3/settings.xml',
-                           'addon_data/skin.estuary.modv2/settings.xml'))
+                           'addon_data/skin.estuary.modv2/settings.xml',
+                           'addon_data/skin.rotary/settings.xml','addon_data/skin.nimbus/settings.xml'))
 
 
 def _settings_values(data):
@@ -137,9 +138,9 @@ def inspect(profile, profile_id, api, update_rule_reader=None):
         skin_ok = active_skin(api) == selected.addon_id
         skin_detail = ('Gewählter Skin aktiv zurückgelesen' if skin_ok else
                        'Gewählter Skin nicht aktiv — explizit aktivieren und Kodi Keep-Dialog bestätigen')
-        if skin_ok and profile_id == 'touch' and api.xbmc.getCondVisibility('Skin.HasSetting(touchmode)') is not True:
+        if skin_ok and profile_id in ('touch','nimbus') and api.xbmc.getCondVisibility('Skin.HasSetting(touchmode)') is not True:
             skin_ok = False
-            skin_detail = 'MOD V2 ist aktiv, aber sein nativer Touchmodus ist aus oder nicht bestätigt'
+            skin_detail = 'Touch-Skin ist aktiv, aber sein nativer Touchmodus ist aus oder nicht bestätigt'
     except (RuntimeError, AttributeError, TypeError):
         skin_ok, skin_detail = False, 'Aktiver Skin nicht prüfbar'
     from .menus import current as menu_current

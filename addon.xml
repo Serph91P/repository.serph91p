@@ -23,6 +23,11 @@
             <datadir zip="true">https://repo.kodinerds.net/addons/</datadir>
             <hashes>false</hashes>
         </dir>
+        <dir minversion="21.0.0" maxversion="21.9.999">
+            <info compressed="false">https://serph91p.github.io/repository.serph91p/setup-bootstrap/repository.adamsbuilds/addons.xml</info>
+            <checksum>https://serph91p.github.io/repository.serph91p/setup-bootstrap/repository.adamsbuilds/addons.xml.md5</checksum>
+            <datadir zip="true">https://adamsbuilds.github.io/repo/</datadir>
+        </dir>
     </extension>
     <extension point="xbmc.addon.metadata">
         <platform>all</platform>

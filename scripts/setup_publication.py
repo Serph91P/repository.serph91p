@@ -1,6 +1,6 @@
 """Explicit first-party trust path; never accepts upstream ZIPs or dispatch evidence.
 
-Only the fixed Wizard builder and six reviewed metadata files from the exact
+Only the fixed Wizard builder and eight reviewed metadata files from the exact
 checked-out target commit are admitted. External add-on provenance stays in
 build_repository's existing immutable-artifact path.
 """
@@ -13,11 +13,13 @@ import zipfile
 from pathlib import Path
 
 ADDON_ID = 'script.serph91p.setup'
-VERSION = '0.4.1'
+VERSION = '0.4.3'
 SOURCE_REPOSITORY = 'Serph91P/repository.serph91p'
 INPUTS = ('addon.xml', 'resources', ADDON_ID, 'setup-bootstrap',
           'tools/build_setup_addon.py', 'tools/build_setup_bootstrap.py')
 BOOTSTRAP_SHA256 = {
+    'repository.adamsbuilds/addons.xml': 'f9334c62500b7d1269fea1cc36e7d0240f7704d2a9e7da8c065fb1b8d0a3847e',
+    'repository.adamsbuilds/addons.xml.md5': '5ad4af056ee45bc3c4faf4930f5b7ab94797dabf278e5e9231a927aa4403226a',
     'repository.beta.emby.kodi/addons.xml': 'e41a546a57a44c54710b0b0b93d136ac8bea05f7386d082d507eccd34e8d6232',
     'repository.beta.emby.kodi/addons.xml.md5': 'a62ecffa1e5e5bd87a9185b1529aeb1d247766513933e46e0051a8ee1b333436',
     'repository.jurialmunkey/addons.xml': '90e092251bbc317693ed6b80668e7d8a911f73388701fe000a80c18da33874e6',

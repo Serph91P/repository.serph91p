@@ -10,7 +10,7 @@ from resources.lib.setupwizard.navigation import binding_path
 
 class DeferredEmbyTests(unittest.TestCase):
     def test_fresh_profile_can_apply_every_skin_without_emby_sync(self):
-        for index, profile in enumerate(('arctic', 'amber', 'touch')):
+        for index, profile in enumerate(('arctic', 'amber', 'rotary', 'nimbus')):
             with self.subTest(profile=profile), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 surface = Surface(root, [1, 6], profile_index=index)
@@ -20,7 +20,7 @@ class DeferredEmbyTests(unittest.TestCase):
                 self.assertTrue(any('Emby' in str(x) and 'offen' in str(x) for x in surface.dialogs))
                 self.assertFalse(any('ValueError' in str(x) for x in surface.dialogs))
                 self.assertTrue(all(v is None for v in json.loads((root / binding_path(profile)).read_text()).values()))
-                if profile != 'arctic':
+                if profile == 'amber':
                     prefix = 'skin.amber-' if profile == 'amber' else ''
                     sub = ET.parse(root / ('addon_data/script.skinshortcuts/' + prefix + 'series.DATA.xml')).getroot()
                     self.assertIn('Emby einrichten', sub[0].findtext('label'))

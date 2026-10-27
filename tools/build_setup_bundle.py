@@ -12,7 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'script.serph91p.setup'))
 from resources.lib.setupwizard.addons import (REQUIREMENTS, PROFILE_REQUIREMENTS,
     MEDIA_REQUIREMENTS)
-from resources.lib.setupwizard.profiles import PROFILES, requirements_for
+from resources.lib.setupwizard.profiles import PROFILES as ALL_PROFILES, requirements_for
+PROFILES = tuple(p for p in ALL_PROFILES if not p.retired)
 
 VERSION = '0.2.0'
 

@@ -51,6 +51,15 @@ def describe_layout(profile_id):
                 'mit den jeweiligen Fortsetzen-/Neu-/Genres-/Plugin-Zielen, eigenen Widgets und Untermenüs. '
                 'Persönliche Emby-Ziele können auf diesem Gerät später eingerichtet werden. '
                 'Das geteilte Skin-Shortcuts-Menü wird mit Sicherung ersetzt.')
+    if profile_id == 'rotary':
+        return ('Rotary: sechs Touch-Kacheln Movies, Series, Twitch, YouTube, Live TV, Setup. '
+                'Identische Inhaltsziele in den Listen des Assistenten, keine nativen Rotary-Inhaltswidgets. '
+                'Vorhandene andere Skins und Einstellungen bleiben erhalten; eigenes Layout mit Sicherung ersetzen.')
+    if profile_id == 'nimbus':
+        return ('Nimbus Plus: Movies, Series, Twitch, YouTube, Live TV, Setup mit nativen Widgets/Untermenüs. '
+                'Verwendet die bestehende skin.nimbus-ID. Nur diese sechs Menübereiche und das dedizierte Touch-Keymap '
+                'werden mit Sicherung eingerichtet; fremde Helper-Daten bleiben erhalten. Der native Nimbus-Helper '
+                'erzeugt später die Menüausgabe, keine aktiven Skin-XML-Patches durch den Wizard.')
     raise ValueError('unknown profile')
 
 

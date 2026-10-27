@@ -159,16 +159,32 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(installs, ['InstallAddon(repository.jurialmunkey)', 'InstallAddon(repository.beta.emby.kodi)'])
             self.assertNotIn('skin.arctic.fuse.3', surface.items)
 
-    def test_existing_wrong_origin_never_migrates_or_mutates(self):
+    def test_existing_wrong_origin_never_silently_migrates_or_reinstalls(self):
         with tempfile.TemporaryDirectory() as tmp:
             surface = guided(Path(tmp), [0, 0])
             with sqlite3.connect(surface.database) as conn:
                 conn.execute("UPDATE installed SET origin='repository.serph91p' WHERE addonID='skin.arctic.fuse.3'")
             before = surface.database.read_bytes()
             surface.run()
-            self.assertEqual(surface.commands, [])
+            self.assertTrue(all(cmd == 'UpdateAddonRepos' for cmd in surface.commands))
             self.assertEqual(surface.database.read_bytes(), before)
             self.assertTrue(any('Migration' in str(d) for d in surface.dialogs))
+
+    def test_native_migration_is_wired_and_does_not_require_global_policy_weakening(self):
+        for policy in (0, 1):
+            with tempfile.TemporaryDirectory() as tmp:
+                surface = guided(Path(tmp), [0, 0])
+                surface.policy = policy
+                with sqlite3.connect(surface.database) as conn:
+                    conn.execute("UPDATE installed SET origin='repository.serph91p' WHERE addonID='skin.arctic.fuse.3'")
+                before = surface.database.read_bytes()
+                with patch('resources.lib.setupwizard.migration.SQLiteMigrationCandidates',
+                           return_value=lambda _: ('999.0',)):
+                    surface.run()
+                self.assertEqual(surface.commands[-1], 'ActivateWindow(AddonBrowser,addons://user/all,return)')
+                self.assertFalse(any(c.startswith('InstallAddon(') or c.startswith('SetSettingValue(') for c in surface.commands))
+                self.assertEqual(surface.policy, policy)
+                self.assertEqual(surface.database.read_bytes(), before)
 
     def test_missing_origins_default_entry_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:

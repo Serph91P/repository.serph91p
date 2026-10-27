@@ -15,10 +15,10 @@ from tools.build_setup_bundle import PROFILES, manifest, build as build_bundle
 
 
 class BootstrapTests(unittest.TestCase):
-    def test_root_exposes_only_own_and_three_bootstrap_feeds(self):
+    def test_root_exposes_only_own_and_declared_bootstrap_feeds(self):
         root = b.validate_root()
         dirs = root.findall("extension[@point='xbmc.addon.repository']/dir")
-        self.assertEqual(len(dirs), 4)
+        self.assertEqual(len(dirs), 1+len(b.SOURCES))
         self.assertFalse(root.findall("requires/import[@addon='repository.jurialmunkey']"))
         for directory in dirs[1:]:
             self.assertEqual(directory.get('minversion'), '21.0.0')
@@ -27,7 +27,7 @@ class BootstrapTests(unittest.TestCase):
 
     def test_local_catalogs_contain_one_original_repository_each(self):
         files = b.local_files()
-        self.assertEqual(len(files), 6)
+        self.assertEqual(len(files), 2*len(b.SOURCES))
         for source in b.SOURCES:
             root = ET.fromstring(files[source['id'] + '/addons.xml'])
             self.assertEqual(len(root), 1)
@@ -37,8 +37,8 @@ class BootstrapTests(unittest.TestCase):
             self.assertEqual(len(addon.findall("extension[@point='xbmc.addon.repository']")), 1)
             self.assertFalse(any(i.get('addon', '').startswith('repository.') for i in addon.findall('requires/import')))
             path = addon.findtext("extension[@point='xbmc.addon.metadata']/path")
-            if source['id'] == 'repository.jurialmunkey':
-                self.assertEqual(path, 'repository.jurialmunkey-3.4.zip')
+            if source['id'] in ('repository.jurialmunkey','repository.adamsbuilds'):
+                self.assertEqual(path, source['path'])
             else:
                 self.assertIsNone(path)
             resolved = source['datadir'] + (path or source['id'] + '/' + source['id'] + '-' + source['version'] + '.zip')
@@ -162,7 +162,7 @@ class BootstrapTests(unittest.TestCase):
             raise OSError('unpublished offline fixture')
         with patch.object(v, 'SOURCES', fixture_sources):
             result = v.validate(fetcher)
-            self.assertEqual(len(result['original_repositories']), 3)
+            self.assertEqual(len(result['original_repositories']), len(b.SOURCES))
             self.assertFalse(result['publication_ready'])
             altered = dict(local)
             key = b.SOURCES[0]['id'] + '/addons.xml'

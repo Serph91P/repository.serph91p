@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="script.serph91p.setup" name="Serph91P Setup Wizard" version="0.4.1" provider-name="Serph91P">
+<addon id="script.serph91p.setup" name="Serph91P Setup Wizard" version="0.4.3" provider-name="Serph91P">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
+    <import addon="script.module.requests" version="2.19.1" optional="true" />
   </requires>
   <extension point="xbmc.python.script" library="default.py">
     <provides>executable</provides>
@@ -9,8 +10,8 @@
   <extension point="xbmc.addon.metadata">
     <summary lang="en_GB">Guided skin and media setup for Kodi</summary>
     <summary lang="de_DE">Geführte Skin- und Medieneinrichtung für Kodi</summary>
-    <description lang="en_GB">Kodi 21 development candidate: resumable setup with live state inspection, native original-repository bootstrap, Arctic Fuse 3, Amber or current Omega Estuary MOD V2. Uses existing bootstrap repository 1.0.3; no manual original-repository ZIP installation. Credentials stay local. No release or device approval.</description>
-    <description lang="de_DE">Kodi-21-Entwicklungskandidat: wiederaufnehmbare Einrichtung mit echter Zustandsprüfung, nativem Original-Repository-Bootstrap, Arctic Fuse 3, Amber oder aktuellem Omega Estuary MOD V2. Verwendet das bestehende Bootstrap-Repository 1.0.3; keine manuelle Installation der Original-Repository-ZIPs. Zugangsdaten bleiben lokal. Keine Release- oder Geräteabnahme.</description>
+    <description lang="en_GB">Kodi 21: resumable setup, native original-repository bootstrap including AdamsBuilds, and guided in-place migration of existing addons through Kodi Versions. Arctic Fuse 3, Amber, Rotary touch grid or Nimbus Plus with native helper-generated menus/widgets. Correct installs and account data are retained; no Kodi database edits or silent uninstall. Existing bootstrap repository 1.0.3 required; no manual companion ZIPs. Credentials stay local. Device acceptance remains separate.</description>
+    <description lang="de_DE">Kodi 21: wiederaufnehmbare Einrichtung, nativer Original-Repository-Bootstrap einschließlich AdamsBuilds und geführte Bestandsmigration über Kodis Versionen-Auswahl. Arctic Fuse 3, Amber, Rotary-Touchraster oder Nimbus Plus mit nativ helpergenerierten Menüs/Widgets. Passende Installationen und Kontodaten bleiben erhalten; kein Kodi-Datenbank-Edit oder stilles Deinstallieren. Bestehendes Bootstrap-Repository 1.0.3 erforderlich; keine manuellen Companion-ZIPs. Zugangsdaten bleiben lokal. Geräteabnahme bleibt separat.</description>
     <platform>all</platform>
     <license>GPL-2.0-or-later</license>
   </extension>

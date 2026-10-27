@@ -7,7 +7,7 @@ from typing import Optional, Dict
 from .config import _profile, _no_symlink_ancestors, MAX_FILE_BYTES
 
 BASE = 'special://home/addons/script.serph91p.setup/resources/playlists/'
-PROFILE_IDS = ('arctic', 'amber', 'touch')
+PROFILE_IDS = ('arctic', 'amber', 'touch', 'rotary', 'nimbus')
 BINDING_KEYS = ('series_resume', 'series_new', 'series_genres', 'twitch_resume', 'twitch_new')
 
 

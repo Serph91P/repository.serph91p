@@ -86,17 +86,17 @@ class MenuOutputTests(unittest.TestCase):
             self.assertFalse(menus.current(root,'touch',api))
 
 
-    def test_guided_resume_repairs_cache_without_layout_or_login_questions(self):
+    def test_retired_touch_cancel_preserves_layout_and_saved_state(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root,s,api,compiled=self.fixture(tmp,answers=[0])
+            root,s,api,compiled=self.fixture(tmp,answers=[-1])
+            state.save(root,'touch')
             compiled.write_text('<includes/>')
+            s.profile_index=-1
             s.run()
-            self.assertTrue(menus.current(root,'touch',api))
-            prompts=' '.join(str(row) for row in s.dialogs+s.approvals)
-            self.assertIn('native Menüansicht',prompts)
-            self.assertNotIn('Layout anwenden?',prompts)
-            self.assertNotIn('Gewählten Skin jetzt aktivieren:',prompts)
-            self.assertFalse(any(command.startswith('InstallAddon(') for command in s.commands))
+            self.assertEqual(compiled.read_text(),'<includes/>')
+            self.assertEqual(state.load(root),'touch')
+            self.assertEqual(s.commands,[])
+            self.assertTrue(any('bleibt samt Einstellungen erhalten' in str(x) for x in s.dialogs))
 
     def test_active_touch_skin_with_disabled_runtime_touchmode_is_not_ready(self):
         with tempfile.TemporaryDirectory() as tmp:

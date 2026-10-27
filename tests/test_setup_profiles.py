@@ -29,7 +29,7 @@ class ProfileTests(unittest.TestCase):
         by_id = {r.addon_id: r.min_version for r in MEDIA_REQUIREMENTS}
         self.assertEqual(by_id['plugin.service.emby-next-gen'], (12, 4, 23))
         self.assertEqual(by_id['plugin.video.twitch'], (3, 1, 11))
-        self.assertEqual(by_id['plugin.video.youtube'], (7,))
+        self.assertEqual(by_id['plugin.video.youtube'], (7, 4, 4, 1))
         self.assertEqual(by_id['plugin.video.gronkhtv'], (2, 3, 10))
         self.assertIn('script.tubecast', by_id)
         self.assertIn('pvr.iptvsimple', by_id)

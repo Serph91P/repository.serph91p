@@ -171,7 +171,7 @@ class CommonTests(unittest.TestCase):
 
     def test_all_skin_install_flows_are_profile_scoped(self):
         from resources.lib.setupwizard.addons import MEDIA_REQUIREMENTS
-        for index,skin in enumerate(('skin.arctic.fuse.3','skin.amber','skin.estuary.modv2')):
+        for index,skin in enumerate(('skin.arctic.fuse.3','skin.amber','skin.rotary','skin.nimbus')):
             with self.subTest(skin=skin),tempfile.TemporaryDirectory() as tmp:
                 s=Surface(Path(tmp),[0,6],ready=False,profile_index=index);s.run()
                 self.assertIn(skin,s.items)
@@ -183,7 +183,7 @@ class CommonTests(unittest.TestCase):
         root=ET.parse(ROOT/'addon.xml').getroot()
         ext=[x for x in root.findall('extension') if x.get('point')!='xbmc.addon.metadata']
         self.assertEqual([x.get('point') for x in ext],['xbmc.addon.repository'])
-        dirs=ext[0].findall('dir');self.assertEqual(len(dirs),4)
+        dirs=ext[0].findall('dir');self.assertEqual(len(dirs),5)
         for d in dirs:
             self.assertTrue(d.findtext('info').startswith('https://'))
             self.assertTrue(d.findtext('checksum').startswith('https://'))

@@ -16,7 +16,7 @@ except ModuleNotFoundError:
         source_url, original_manifest, catalog, local_files, validate_root)
 
 ALLOWED_HOSTS = frozenset(('raw.githubusercontent.com', 'embydata.com',
-                           'repo.kodinerds.net', 'serph91p.github.io'))
+                           'repo.kodinerds.net', 'serph91p.github.io', 'adamsbuilds.github.io'))
 
 
 def checked_url(url):

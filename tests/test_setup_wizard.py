@@ -98,7 +98,7 @@ class Surface:
 
     def translate(self, path):
         if path == 'special://database': return self.database_dir.name
-        if path != 'special://profile': raise AssertionError(path)
+        if path not in ('special://profile','special://userdata'): raise AssertionError(path)
         return str(self.profile)
     def native_skin_path(self,skin,force=False):
         # Unit-only native compiler model; real Kodi evidence is separate.

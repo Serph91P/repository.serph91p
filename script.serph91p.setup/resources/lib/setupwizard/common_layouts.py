@@ -134,6 +134,9 @@ def common_payloads(profile, profile_id, bindings):
                     settings.remove(old)
             ET.SubElement(settings, 'setting', {'id': 'touchmode', 'type': 'bool'}).text = 'true'
             payload[rel] = _xml(settings)
+    elif profile_id in ('rotary','nimbus'):
+        from .adams import payloads
+        payload.update(payloads(profile,profile_id,bindings))
     else:
         raise ValueError('unknown skin profile')
     if set(payload) != POLICIES[COMMON_POLICY_IDS[profile_id]]:

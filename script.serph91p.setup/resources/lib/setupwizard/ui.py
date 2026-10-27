@@ -20,13 +20,13 @@ REPOSITORIES = ('Benötigt das vorhandene Serph91P Repository und repository.xbm
     'Das eigene Repository muss den veröffentlichten Stand 1.0.3 haben; bei älterem Stand öffnet der Assistent dessen native Aktualisierung. Fehlende Original-Repositories fügt er anschließend selbst über Kodi hinzu. '
     'Native Bestätigungen bleiben sichtbar; keine manuelle Suche nach Repository-ZIPs. '
     'IPTV Simple: Kodi-Originalrepo oder geprüftes LibreELEC-Systemrepo; allgemeine Linux-Pakete bleiben OS-verwaltet und ungeprüft. Gepflegte Serph91P-Ausnahmen: '
-    'Twitch 3.1.11, TubeCast 1.6.1+omega.2, Gronkh.tv 2.3.10. '
-    'Abweichende bestehende Herkunft: in Kodi Addon-Informationen / Versionen das Original-Repository '
-    'wählen oder manuell neu installieren. Keine automatische Löschung oder Datenbankänderung.')
+    'Twitch 3.1.11, YouTube 7.4.4.1, TubeCast 1.6.1+omega.2, Gronkh.tv 2.3.10. '
+    'Passenden Bestand übernehmen; alte oder abweichende Quellen geführt über Meine Addons / Versionen '
+    'migrieren. Keine Deinstallation, kein Datenreset und keine Datenbankänderung.')
 
 
 def install_with_progress(api, required, dialog, monitor, progress, log, *, approved=False,
-                          catalog_reader=None):
+                          catalog_reader=None, migration_handler=None):
     """One explicit batch approval; native Kodi dialogs remain interactive."""
     if approved is not True:
         return False, "Installation nicht freigegeben."
@@ -68,8 +68,20 @@ def install_with_progress(api, required, dialog, monitor, progress, log, *, appr
                     return False, 'Katalogindex nicht bereit (Zeitlimit, Abbruch oder nicht lesbar); später fortsetzen.'
                 catalog_checked = True
             ready, status = check_requirement(api, req)
+            if not ready and req.addon_id not in ('repository.serph91p', 'repository.xbmc.org'):
+                from .migration import inspect_existing, verify_migration
+                existing = inspect_existing(api, req)
+                if existing.state == 'blocked':
+                    return False, req.label + ': ' + existing.detail + '; keine Änderungen.'
+                if existing.state == 'migrate':
+                    if migration_handler is None:
+                        return False, req.label + ': native Bestandsmigration erforderlich; keine Neuinstallation.'
+                    progress.close()
+                    if not migration_handler(existing) or not verify_migration(api, existing):
+                        return False, 'Bestandsmigration: ' + req.label + ' noch nicht nativ bestätigt; Wizard nach der Versionsauswahl erneut öffnen.'
+                    ready, status = check_requirement(api, req)
             if status.startswith('Herkunft'):
-                return False, req.label + ': ' + status + '. Native Kodi Versionen/Original-Repository oder manuelle Neuinstallation verwenden.'
+                return False, req.label + ': ' + status + '. Native Bestandsmigration erforderlich; keine Deinstallation.'
             if req.addon_id == 'repository.serph91p' and not ready:
                 return False, req.label + ': vorhandene eigene Quelle nativ aktualisieren/aktivieren; keine manuelle Installation der Original-Repositories erforderlich.'
             if req.addon_id == 'repository.xbmc.org' and not ready:
@@ -151,16 +163,21 @@ def run(argv=None):
         return
 
     def select_profile():
-        selected = dialog.select(TITLE + ' — Skin-Profil wählen', [p.label for p in PROFILES])
-        if not 0 <= selected < len(PROFILES):
+        offered = tuple(p for p in PROFILES if not p.retired)
+        selected = dialog.select(TITLE + ' — Skin-Profil wählen', [p.label for p in offered])
+        if not 0 <= selected < len(offered):
             return None
-        item = PROFILES[selected]
+        item = offered[selected]
         if item.warning and not dialog.yesno(TITLE, item.warning):
             return None
         state.save(profile, item.key)
         return item
 
     try:
+        if saved_profile and next(p for p in PROFILES if p.key == saved_profile).retired:
+            dialog.ok(TITLE, 'Das frühere MOD-V2-Touchprofil bleibt samt Einstellungen erhalten, wird aber nicht mehr neu angeboten. '
+                'Rotary oder Nimbus Plus beziehungsweise ein anderes Profil ausdrücklich auswählen. Abbrechen verändert nichts.')
+            saved_profile = None
         if saved_profile:
             profile_choice = next(p for p in PROFILES if p.key == saved_profile)
         else:
@@ -170,7 +187,7 @@ def run(argv=None):
                 current_skin = xbmc.getSkinDir()
             except Exception:
                 current_skin = None
-            profile_choice = next((p for p in PROFILES if p.addon_id == current_skin), None)
+            profile_choice = next((p for p in PROFILES if p.addon_id == current_skin and not p.retired), None)
             if profile_choice is None:
                 profile_choice = select_profile()
             else:
@@ -280,8 +297,9 @@ def run(argv=None):
             if choice == 0:
                 summary = ('Komplettsetup für ' + profile_choice.label + ':\n'
                     + ', '.join(item.label for item in required)
-                    + '\n\nQuellen: Serph91P/Jurialmunkey, Emby Beta, Kodinerds und Kodi. '
-                    'Kataloge aktualisieren und diese feste Auswahl inklusive notwendiger Abhängigkeiten installieren/aktivieren? '
+                    + '\n\nQuellen: Serph91P/Jurialmunkey, Emby Beta, AdamsBuilds und Kodi. '
+                    'Passenden Bestand samt Einstellungen/Logins übernehmen; alte/falsche Quellen geführt migrieren. '
+                    'Kataloge aktualisieren und fehlende Addons dieser festen Auswahl inklusive Abhängigkeiten installieren/aktivieren? '
                     'Der Assistent fragt nur einmal. Kodi-eigene Dialoge bleiben bedienbar.')
                 if not dialog.yesno(TITLE, summary, 'Abbrechen', 'Alles installieren'):
                     if guiding:
@@ -303,32 +321,35 @@ def run(argv=None):
                 if not check_requirement(api, official)[0]:
                     dialog.ok(TITLE, 'Offizielles repository.xbmc.org muss bereits vorhanden, aktiv und prüfbar sein. Keine Installation über Bootstrap.')
                     return
+                needs_install = False
                 for item in required:
-                    okay, detail = check_requirement(api, item)
-                    if detail.startswith('Herkunft') or detail == 'API-Fehler':
-                        if item.addon_id == 'pvr.iptvsimple':
-                            from .pvr import distribution
-                            if not distribution(api).automatic_install:
-                                dialog.ok(TITLE, item.label + ': ' + detail + '\n'
-                                    'Setup bleibt unvollständig. Keine Addons installiert; OS-Paketverwaltung und vorhandene PVR-Dateien bleiben unverändert.')
-                                return
-                        dialog.ok(TITLE, item.label + ': ' + detail + '. In Kodi Versionen/Originalquelle wählen oder manuell neu installieren. Keine automatische Migration.')
+                    from .migration import inspect_existing
+                    existing = inspect_existing(api, item)
+                    needs_install = needs_install or existing.state == 'missing'
+                    if existing.state == 'blocked':
+                        dialog.ok(TITLE, item.label + ': ' + existing.detail + '\n'
+                            'Keine Migration auf Verdacht; OS-Paketverwaltung, PVR-Dateien und Addon-Daten bleiben unverändert.')
                         return
                 policy = repository_policy(api)
-                if policy.needs_choice:
+                if policy.needs_choice and needs_install:
                     if dialog.yesno(TITLE, 'Kodi Updatequellen sind nicht als „Beliebige Repositories“ zurückgelesen. '
                             'Diese globale Auswahl ist weniger restriktiv und damit weniger sicher als nur offizielle Quellen. '
                             'Für Originalquellen und gepflegte Serph91P-Ausnahmen bei Bedarf selbst in System / Addons wählen. '
                             'Systemeinstellungen jetzt öffnen? Danach den Assistenten erneut öffnen; keine automatische Richtlinienänderung.'):
                         xbmc.executebuiltin('ActivateWindow(systemsettings)')
                     return
-                from .catalog import SQLiteCatalogReader, wait_for_catalog
+                from .catalog import SQLiteCatalogReader
+                from .migration import SQLiteMigrationCandidates, guide_native_migration
                 catalog_reader = SQLiteCatalogReader(xbmcvfs.translatePath,
                     version_read_fn=lambda addon_id: (api.details(addon_id) or {}).get('version'))
                 okay, detail = install_with_progress(api, required, dialog, monitor,
-                    xbmcgui.DialogProgressBG(), log, approved=True, catalog_reader=catalog_reader)
+                    xbmcgui.DialogProgressBG(), log, approved=True, catalog_reader=catalog_reader,
+                    migration_handler=lambda existing: guide_native_migration(api, existing, dialog,
+                        SQLiteMigrationCandidates(xbmcvfs.translatePath, catalog_reader), xbmc.executebuiltin))
                 if monitor.abortRequested():
                     return
+                if detail.startswith('Bestandsmigration:'):
+                    return  # Native list already open or its explicit prompt declined.
                 dialog.ok(TITLE, ('Alle benötigten Addons sind installiert und aktiv. Layout und Anmeldungen bleiben getrennte Schritte.' if okay else
                     'Einrichtung unvollständig. ' + detail + '\n' + REPOSITORIES))
                 if guiding and not okay:
@@ -342,11 +363,14 @@ def run(argv=None):
                     if guiding:
                         return
                     continue
+                if profile_choice.key in ('rotary','nimbus'):
+                    from .adams import validate_runtime
+                    validate_runtime(api,profile_choice.key,xbmcvfs.translatePath)
                 if not dialog.yesno(TITLE, status.layout_detail + '\n' + status.regional_detail + '\n' + describe_layout(profile_choice.key) +
                     '\nDas Layout lässt sich auch vor der Emby-Anmeldung anwenden. Fehlende persönliche Bibliotheken bleiben als Emby einrichten markiert und können später verknüpft werden. '
                     'Portable Skin-Einstellungen sowie Sprache/Region der Vorlage (English, Central Europe) werden übernommen und gesichert. '
                     'Bei einer Sprachänderung lädt Kodi seine Oberfläche selbst neu. '
-                    'Bei MOD V2 werden geteilte und private Skin-Shortcuts-Menüs ersetzt; die globale Freigabeeinstellung bleibt unverändert. Fortfahren?'):
+                    'Nur die beschriebenen Profilziele werden eingerichtet; frühere Skins, fremde Menüs und globale Update-Freigaben bleiben unverändert. Fortfahren?'):
                     if guiding:
                         return
                     continue
@@ -452,7 +476,7 @@ def run(argv=None):
                     if guiding:
                         return
                     continue
-                if not dialog.yesno(TITLE, 'Skin Shortcuts baut jetzt die native Menüansicht aus dem bereits geprüften Layout auf. '
+                if not dialog.yesno(TITLE, 'Der gewählte Skin beziehungsweise sein nativer Helper baut jetzt die Menüansicht aus dem bereits geprüften Layout auf. '
                         'Es kann die Oberfläche nativ neu laden. Keine erneute Layout-/Login-Einrichtung und kein Neustart. Fortfahren?'):
                     return
                 from .menus import refresh as refresh_menu
@@ -480,8 +504,8 @@ def run(argv=None):
                     if guiding:
                         return
                     continue
-                if profile_choice.key == 'touch' and xbmc.getSkinDir() == profile_choice.addon_id:
-                    if dialog.yesno(TITLE, 'MOD V2 ist bereits aktiv, sein nativer Touchmodus aber nicht bestätigt. '
+                if profile_choice.key in ('touch','nimbus') and xbmc.getSkinDir() == profile_choice.addon_id:
+                    if dialog.yesno(TITLE, 'Der Touch-Skin ist bereits aktiv, sein nativer Touchmodus aber nicht bestätigt. '
                             'Skin-Einstellungen öffnen und dort Touchmodus einschalten? Vorhandene Einstellungen werden nicht still überschrieben.'):
                         xbmc.executebuiltin('ActivateWindow(skinsettings)')
                     return

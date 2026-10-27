@@ -25,11 +25,14 @@ PROFILE_REQUIREMENTS = (
     AddonRequirement('script.skinshortcuts', (2, 0, 3), 'Skin Shortcuts'),
     AddonRequirement('skin.amber', (3, 99, 2), 'Amber'),
     AddonRequirement('skin.estuary.modv2', (21, 4), 'Estuary MOD V2', '21.4+omega.10'),
+    AddonRequirement('skin.rotary', (0, 0, 1), 'Rotary'),
+    AddonRequirement('skin.nimbus', (0, 2, 7), 'Nimbus Plus', '0.2.07'),
+    AddonRequirement('script.nimbus.helper', (0, 0, 98), 'Nimbus Plus Helper'),
 )
 MEDIA_REQUIREMENTS = (
     AddonRequirement('plugin.service.emby-next-gen', (12, 4, 23), 'Emby Next Gen'),
     AddonRequirement('plugin.video.twitch', (3, 1, 11), 'Twitch'),
-    AddonRequirement('plugin.video.youtube', (7,), 'YouTube'),
+    AddonRequirement('plugin.video.youtube', (7, 4, 4, 1), 'YouTube'),
     AddonRequirement('plugin.video.gronkhtv', (2, 3, 10), 'Gronkh.tv'),
     AddonRequirement('script.tubecast', (1, 6, 1), 'TubeCast', '1.6.1+omega.2'),
     AddonRequirement('pvr.iptvsimple', (0,), 'PVR IPTV Simple'),
@@ -41,6 +44,7 @@ ORIGINAL_REPOSITORY_REQUIREMENTS = (
     AddonRequirement('repository.jurialmunkey', (3, 4), 'Jurialmunkey Repository'),
     AddonRequirement('repository.beta.emby.kodi', (1, 0, 11), 'Emby Beta Repository'),
     AddonRequirement('repository.kodinerds', (7, 0, 1, 9), 'Kodinerds Repository'),
+    AddonRequirement('repository.adamsbuilds', (1, 0), 'AdamsBuilds Repository'),
 )
 ALL_REQUIREMENTS = REQUIREMENTS + PROFILE_REQUIREMENTS + MEDIA_REQUIREMENTS + (REPOSITORY_REQUIREMENT, OFFICIAL_REPOSITORY_REQUIREMENT, LIBREELEC_REPOSITORY_REQUIREMENT) + ORIGINAL_REPOSITORY_REQUIREMENTS
 REQUIREMENTS_BY_ID = {r.addon_id: r for r in ALL_REQUIREMENTS}
@@ -204,6 +208,14 @@ def ensure_requirement(api, requirement, confirm, wait_for_install, log):
         return True
     if status == 'API-Fehler' or status.startswith('Herkunft'):
         return False  # Inspection errors must never trigger mutation.
+    if status == 'Version zu alt oder nicht prüfbar':
+        log(requirement.label + ': vorhandenes Addon nativ aktualisieren/migrieren; InstallAddon aktualisiert keine installierten Addons')
+        return False
+    if status == 'deaktiviert':
+        details = api.details(requirement.addon_id)
+        if not version_at_least(details.get('version'), requirement.min_version_string or requirement.min_version):
+            log(requirement.label + ': zuerst nativ aktualisieren/migrieren; alte deaktivierte Installation bleibt erhalten')
+            return False
     if not confirm('{}: {}. Über Kodis Repository-Verwaltung installieren/aktivieren?'.format(requirement.label, status)):
         return False
     try:

@@ -26,6 +26,10 @@ SOURCES = (
      'datadir': 'https://repo.kodinerds.net/addons/',
      'path': 'repository.kodinerds/repository.kodinerds-7.0.1.9.zip',
      'sha256': '690771ac6c21a7b726a58401de172799cbacc257c73b8ca17885d1bd5345e8ea'},
+    {'id': 'repository.adamsbuilds', 'version': '1.0',
+     'datadir': 'https://adamsbuilds.github.io/repo/',
+     'path': 'repository.adamsbuilds-1.0.zip',
+     'sha256': '915fc41dd3f45c4a6ae32441626f2234a8e201b372eb1da29cddbdc6e3b77334'},
 )
 MAX_ZIP = 8 * 1024 * 1024
 MAX_MANIFEST = 256 * 1024
@@ -64,7 +68,7 @@ def original_manifest(data, source):
 
 def catalog(root, source):
     root = copy.deepcopy(root)
-    if source['id'] == 'repository.jurialmunkey':
+    if source['id'] in ('repository.jurialmunkey','repository.adamsbuilds'):
         metadata = root.find("extension[@point='xbmc.addon.metadata']")
         if metadata.find('path') is not None:
             raise ValueError('unexpected original metadata path')
@@ -86,7 +90,7 @@ def safe_write(path, data):
 
 
 def local_files(site=SITE):
-    """Validate checked-in metadata and return the exact six hosted files."""
+    """Validate checked-in metadata and return exactly two files per source."""
     files = {}
     for source in SOURCES:
         for name in ('addons.xml', 'addons.xml.md5'):
@@ -105,7 +109,7 @@ def local_files(site=SITE):
         if main != ['xbmc.addon.repository']:
             raise ValueError('bootstrap contains non-repository content')
         paths = addon.findall("extension[@point='xbmc.addon.metadata']/path")
-        expected = [source['path']] if source['id'] == 'repository.jurialmunkey' else []
+        expected = [source['path']] if source['id'] in ('repository.jurialmunkey','repository.adamsbuilds') else []
         if [p.text for p in paths] != expected or addon.find('path') is not None:
             raise ValueError('invalid relative metadata path')
         if files[source['id'] + '/addons.xml.md5'] != (hashlib.md5(data).hexdigest() + '\n').encode():
@@ -121,7 +125,7 @@ def validate_root():
     expected = [(PAGES + '/addons.xml', PAGES)] + [
         (PAGES + '/setup-bootstrap/' + s['id'] + '/addons.xml', s['datadir']) for s in SOURCES]
     if len(dirs) != len(expected):
-        raise ValueError('own repository must expose own catalog and three bootstrap catalogs only')
+        raise ValueError('own repository must expose own catalog and declared repository-only bootstrap catalogs')
     for directory, (info, datadir) in zip(dirs, expected):
         if (directory.findtext('info'), directory.findtext('checksum'), directory.findtext('datadir')) != (info, info + '.md5', datadir):
             raise ValueError('unexpected repository feed contract')

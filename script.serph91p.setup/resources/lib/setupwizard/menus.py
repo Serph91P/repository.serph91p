@@ -41,6 +41,9 @@ def current(profile,key,api):
     if key=='arctic':
         return True  # Arctic uses Skin Variables, not the Skin Shortcuts compiler.
     try:
+        if key in ('rotary','nimbus'):
+            from .adams import native_current
+            return native_current(api,key,_profile(profile),load_bindings(profile,key))
         if key not in SKINS or active_skin(api)!=SKINS[key]:
             return False
         expected=_expected(_profile(profile),key)
@@ -86,6 +89,14 @@ def refresh(profile,key,api,monitor,*,approved=False,timeout=30,
             clock=time.monotonic,sleep=time.sleep):
     if approved is not True:
         raise ValueError('native menu rebuild not approved')
+    if key in ('rotary','nimbus'):
+        from .adams import refresh_native
+        refresh_native(api,key,profile,load_bindings(profile,key))
+        deadline=clock()+timeout
+        while not monitor.abortRequested() and clock()<deadline:
+            if current(profile,key,api):return
+            sleep(.25)
+        raise RuntimeError('native Adams menu output not confirmed; setup remains incomplete')
     if key not in SKINS or active_skin(api)!=SKINS[key]:
         raise ValueError('selected shared-menu skin must be active and confirmed')
     if current(profile,key,api):
