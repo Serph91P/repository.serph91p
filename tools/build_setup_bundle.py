@@ -11,10 +11,10 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'script.serph91p.setup'))
 from resources.lib.setupwizard.addons import (REQUIREMENTS, PROFILE_REQUIREMENTS,
-    MEDIA_REQUIREMENTS, REPOSITORY_REQUIREMENT)
+    MEDIA_REQUIREMENTS)
 from resources.lib.setupwizard.profiles import PROFILES, requirements_for
 
-VERSION = '0.1.0'
+VERSION = '0.2.0'
 
 
 def manifest(profile):
@@ -25,10 +25,12 @@ def manifest(profile):
                               'version': VERSION, 'provider-name': 'Serph91P'})
     imports = ET.SubElement(root, 'requires')
     ET.SubElement(imports, 'import', addon='xbmc.python', version='3.0.0')
-    required = (REPOSITORY_REQUIREMENT,) + requirements_for(
+    required = requirements_for(
         profile, REQUIREMENTS, PROFILE_REQUIREMENTS, MEDIA_REQUIREMENTS)
     for req in required:
-        version = '.'.join(map(str, req.min_version + (0,) * max(0, 3 - len(req.min_version))))
+        if req.addon_id.startswith('repository.'):
+            raise ValueError('repository addons require explicit native installation, not imports')
+        version = req.min_version_string or '.'.join(map(str, req.min_version + (0,) * max(0, 3 - len(req.min_version))))
         ET.SubElement(imports, 'import', addon=req.addon_id, version=version)
     ET.SubElement(root, 'extension', point='xbmc.python.module', library='lib')
     metadata = ET.SubElement(root, 'extension', point='xbmc.addon.metadata')
@@ -36,7 +38,9 @@ def manifest(profile):
     ET.SubElement(metadata, 'description', lang='en_GB').text = (
         'Test candidate. Install explicitly through Kodi Install from ZIP. Kodi installs the selected '
         'skin and fixed media dependencies through its native dependency resolver. Requires Serph91P '
-        'Repository 1.0.1 already installed and its catalogs loaded. No installer code, credentials, '
+        'Repository 1.0.2 and the original Jurialmunkey, Emby beta and Kodinerds repositories '
+        'already explicitly installed and their own catalogs loaded. Repository addons cannot be '
+        'installed as dependencies. No installer code, credentials, '
         'settings changes, layout changes or wizard payload. Not device-validated.')
     ET.SubElement(metadata, 'license').text = 'MIT'
     ET.SubElement(metadata, 'platform').text = 'all'

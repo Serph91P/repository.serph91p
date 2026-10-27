@@ -19,6 +19,10 @@ PROFILES = (
 )
 
 def requirements_for(profile, arctic_requirements, profile_requirements, shared_requirements):
-    return ((arctic_requirements if profile.key == 'arctic' else
-             (next(r for r in profile_requirements if r.addon_id == profile.addon_id),))
-            + shared_requirements)
+    # All layouts use TMDb Helper for Series/Top Rated. Reuse its canonical
+    # requirement without exposing the dependency as a service/login choice.
+    common = tuple(r for r in arctic_requirements if r.addon_id == 'plugin.video.themoviedb.helper')
+    base = (arctic_requirements if profile.key == 'arctic' else
+            (next(r for r in profile_requirements if r.addon_id == profile.addon_id),) + common +
+            tuple(r for r in profile_requirements if r.addon_id == 'script.skinshortcuts'))
+    return base + shared_requirements

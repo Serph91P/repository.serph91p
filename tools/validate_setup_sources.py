@@ -1,76 +1,118 @@
-"""Read-only live check of the candidate's native upstream catalog contract."""
+"""Read-only original repository ZIP verification; never publishes or installs."""
+from __future__ import annotations
 import argparse
-import collections
-import gzip
 import hashlib
 import json
 from pathlib import Path
-import sys
+import urllib.error
+import urllib.parse
 import urllib.request
 from xml.etree import ElementTree as ET
+try:
+    from tools.build_setup_bootstrap import (ROOT, PAGES, SOURCES, MAX_ZIP, SITE,
+        source_url, original_manifest, catalog, local_files, validate_root)
+except ModuleNotFoundError:
+    from build_setup_bootstrap import (ROOT, PAGES, SOURCES, MAX_ZIP, SITE,
+        source_url, original_manifest, catalog, local_files, validate_root)
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'script.serph91p.setup'))
-from resources.lib.setupwizard.addons import (REQUIREMENTS, PROFILE_REQUIREMENTS,
-                                              MEDIA_REQUIREMENTS, version_at_least)
+ALLOWED_HOSTS = frozenset(('raw.githubusercontent.com', 'embydata.com',
+                           'repo.kodinerds.net', 'serph91p.github.io'))
+
+
+def checked_url(url):
+    parsed = urllib.parse.urlsplit(url)
+    if (parsed.scheme != 'https' or parsed.hostname not in ALLOWED_HOSTS or
+            parsed.username or parsed.password or parsed.port not in (None, 443)):
+        raise ValueError('non-public/non-allowlisted source URL')
+    return url
+
+
+class PublicRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        checked_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 def fetch(url):
+    checked_url(url)
     request = urllib.request.Request(url, headers={'User-Agent': 'Kodi/21.2 (setup-contract-check)'})
-    with urllib.request.urlopen(request, timeout=40) as response:
-        if not response.url.startswith('https://'):
-            raise ValueError('non-TLS catalog redirect')
-        data = response.read(20 * 1024 * 1024 + 1)
-    if len(data) > 20 * 1024 * 1024:
-        raise ValueError('oversized upstream catalog')
-    return gzip.decompress(data) if data.startswith(b'\x1f\x8b') else data
+    opener = urllib.request.build_opener(PublicRedirects())
+    with opener.open(request, timeout=40) as response:
+        checked_url(response.url)
+        data = response.read(MAX_ZIP + 1)
+    if len(data) > MAX_ZIP:
+        raise ValueError('oversized public source')
+    return data
 
 
-def validate():
-    root = ET.parse(ROOT / 'addon.xml').getroot()
-    catalog = collections.defaultdict(list)
+def public_prerequisites(fetcher, local):
+    """Missing unpublished candidates are explicit blockers, not weakened validation."""
+    checks = []
+    for source in SOURCES:
+        url = PAGES + '/setup-bootstrap/' + source['id'] + '/addons.xml'
+        try:
+            data = fetcher(url)
+            token = fetcher(url + '.md5')
+            ready = (data == local[source['id'] + '/addons.xml'] and
+                     token == local[source['id'] + '/addons.xml.md5'])
+            checks.append({'url': url, 'ready': ready, 'reason': 'exact candidate bytes required'})
+        except (OSError, ValueError) as exc:
+            checks.append({'url': url, 'ready': False, 'reason': str(exc)})
+    own_url = PAGES + '/addons.xml'
+    try:
+        data = fetcher(own_url)
+        token = fetcher(own_url + '.md5').decode().strip().split()[0].lower()
+        if hashlib.md5(data).hexdigest() != token:
+            raise ValueError('own public catalog MD5 mismatch')
+        root = ET.fromstring(data)
+        if root.tag != 'addons':
+            raise ValueError('invalid own public catalog')
+        candidates = [ET.parse(ROOT / 'addon.xml').getroot(),
+                      ET.parse(ROOT / 'script.serph91p.setup/addon.xml').getroot()]
+        for addon in candidates:
+            matches = [a for a in root if (a.get('id'), a.get('version')) ==
+                       (addon.get('id'), addon.get('version'))]
+            checks.append({'url': own_url, 'id': addon.get('id'), 'version': addon.get('version'),
+                           'ready': len(matches) == 1,
+                           'reason': 'candidate must be present exactly once in own public catalog'})
+    except (OSError, ValueError, ET.ParseError, IndexError) as exc:
+        checks.append({'url': own_url, 'ready': False, 'reason': str(exc)})
+    return checks
+
+
+def validate(fetcher=fetch):
+    validate_root()
+    local = local_files()
     reports = []
-    for directory in root.findall('./extension/dir'):
-        url = directory.findtext('info')
-        checksum_url = directory.findtext('checksum')
-        if not checksum_url or not url:
-            raise ValueError('repository dir without checksum/info')
-        data = fetch(url)
-        expected = fetch(checksum_url).decode().strip().split()[0].lower()
-        if hashlib.md5(data).hexdigest() != expected:
-            raise ValueError('upstream catalog changed during read or checksum mismatch: ' + url)
-        parsed = ET.fromstring(data)
-        if parsed.tag != 'addons':
-            raise ValueError('invalid upstream catalog')
-        reports.append({'url': url, 'addons': len(parsed), 'md5_change_token_matches': True,
-                        'sha256_downloaded_catalog': hashlib.sha256(data).hexdigest()})
-        for addon in parsed:
-            catalog[addon.get('id')].append((addon.get('version'), url))
-    duplicates = [(aid, version) for aid, entries in catalog.items()
-                  for version, count in collections.Counter(v for v, _ in entries).items() if count > 1]
-    if duplicates:
-        raise ValueError('ambiguous equal-version federated IDs: ' + repr(duplicates))
-    required = []
-    for req in REQUIREMENTS + PROFILE_REQUIREMENTS + MEDIA_REQUIREMENTS:
-        if req.addon_id in ('skin.amber', 'plugin.video.youtube', 'pvr.iptvsimple',
-                             'resource.images.weathericons.white', 'resource.images.studios.coloured'):
-            required.append({'id': req.addon_id, 'source': 'official Kodi/platform repository',
-                             'runtime_acceptance_required': True})
-            continue
-        versions = [v for v, _ in catalog.get(req.addon_id, []) if version_at_least(v, req.min_version)]
-        if not versions:
-            raise ValueError('required addon unavailable at minimum: ' + req.addon_id)
-        required.append({'id': req.addon_id, 'available_versions': versions})
-    return {'catalogs': reports, 'ambiguous_duplicates': duplicates, 'requirements': required,
-            'note': 'Catalog MD5 tokens are not signatures or package SHA-256 pins. No publication or device installation performed.'}
+    for source in SOURCES:
+        url = source_url(source)
+        data = fetcher(url)
+        original = original_manifest(data, source)
+        if catalog(original, source) != local[source['id'] + '/addons.xml']:
+            raise ValueError('bootstrap metadata differs from original except allowed relative path: ' + source['id'])
+        reports.append({'id': source['id'], 'version': source['version'], 'url': url,
+                        'sha256': hashlib.sha256(data).hexdigest(), 'size': len(data),
+                        'original_repository_verified': True,
+                        'catalog_metadata_matches_original': True})
+    prerequisites = public_prerequisites(fetcher, local)
+    return {'original_repositories': reports, 'publication_prerequisites': prerequisites,
+            'publication_ready': all(p['ready'] for p in prerequisites),
+            'device_validated': False,
+            'note': 'Only original repository addons are bootstrapped. No mirrored ZIPs, leaf federation, '
+                    'publication, device actions or immutable-publication trust validation performed. '
+                    'MD5 is a catalog change token, not a signature. Artwork URLs are preserved, not verified.'}
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--report', type=Path)
     args = parser.parse_args()
     result = validate()
     text = json.dumps(result, indent=2) + '\n'
     if args.report:
-        args.report.write_text(text)
+        try:
+            from tools.build_setup_bootstrap import safe_write
+        except ModuleNotFoundError:
+            from build_setup_bootstrap import safe_write
+        safe_write(args.report, text.encode())
     print(text)

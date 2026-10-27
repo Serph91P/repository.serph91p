@@ -153,7 +153,7 @@ class CommonTests(unittest.TestCase):
             root=Path(tmp); b=self.fixture(root)
             (root/'setupwizard-backups').mkdir()
             apply_common_layout(root,root/'setupwizard-backups'/'x','touch',b)
-            s=Surface(root,profile_index=1)
+            s=Surface(root,selections=[1])
             s.run(('group=twitch','profile=touch'))
             self.assertEqual(s.commands,[n.action(n.groups(b)[2].items[1])])
 
@@ -183,7 +183,7 @@ class CommonTests(unittest.TestCase):
         root=ET.parse(ROOT/'addon.xml').getroot()
         ext=[x for x in root.findall('extension') if x.get('point')!='xbmc.addon.metadata']
         self.assertEqual([x.get('point') for x in ext],['xbmc.addon.repository'])
-        dirs=ext[0].findall('dir');self.assertEqual(len(dirs),5)
+        dirs=ext[0].findall('dir');self.assertEqual(len(dirs),4)
         for d in dirs:
             self.assertTrue(d.findtext('info').startswith('https://'))
             self.assertTrue(d.findtext('checksum').startswith('https://'))
@@ -200,10 +200,9 @@ class CommonTests(unittest.TestCase):
             with zipfile.ZipFile(a) as z:
                 self.assertIsNone(z.testzip());self.assertEqual(len(z.namelist()),3)
                 meta=ET.fromstring(z.read('repository.serph91p/addon.xml'))
-                self.assertEqual(meta.get('version'),'1.0.1')
+                self.assertEqual(meta.get('version'),'1.0.2')
         wizard=ET.parse(ADDON/'addon.xml').getroot()
-        self.assertIn({'addon':'repository.serph91p','version':'1.0.1'},
-                      [x.attrib for x in wizard.findall('./requires/import')])
+        self.assertIn({'addon':'repository.serph91p','version':'1.0.2'}, [x.attrib for x in wizard.findall('./requires/import')])
 
 
 if __name__ == '__main__': unittest.main()

@@ -20,9 +20,9 @@ class ProfileTests(unittest.TestCase):
         self.assertTrue(by_key['touch'].layout_supported)
         self.assertEqual(by_key['touch'].addon_id, 'skin.estuary.modv2')
         amber = requirements_for(by_key['amber'], REQUIREMENTS, PROFILE_REQUIREMENTS, MEDIA_REQUIREMENTS)
-        self.assertEqual([r.addon_id for r in amber], ['skin.amber'] + [r.addon_id for r in MEDIA_REQUIREMENTS])
+        self.assertEqual([r.addon_id for r in amber], ['skin.amber', 'plugin.video.themoviedb.helper', 'script.skinshortcuts'] + [r.addon_id for r in MEDIA_REQUIREMENTS])
         touch = requirements_for(by_key['touch'], REQUIREMENTS, PROFILE_REQUIREMENTS, MEDIA_REQUIREMENTS)
-        self.assertEqual([r.addon_id for r in touch], ['skin.estuary.modv2'] + [r.addon_id for r in MEDIA_REQUIREMENTS])
+        self.assertEqual([r.addon_id for r in touch], ['skin.estuary.modv2', 'plugin.video.themoviedb.helper', 'script.skinshortcuts'] + [r.addon_id for r in MEDIA_REQUIREMENTS])
         self.assertNotIn('script.skinvariables', [r.addon_id for r in touch])
 
     def test_shared_media_addons_are_allowlisted(self):
@@ -30,7 +30,7 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(by_id['plugin.service.emby-next-gen'], (12, 4, 23))
         self.assertEqual(by_id['plugin.video.twitch'], (3, 1, 11))
         self.assertEqual(by_id['plugin.video.youtube'], (7,))
-        self.assertEqual(by_id['plugin.video.gronkhtv'], (2, 3, 7))
+        self.assertEqual(by_id['plugin.video.gronkhtv'], (2, 3, 10))
         self.assertIn('script.tubecast', by_id)
         self.assertIn('pvr.iptvsimple', by_id)
 
@@ -41,7 +41,9 @@ class ProfileTests(unittest.TestCase):
             surface = Surface(Path(tmp), [0, 6], ready=False, profile_index=1)
             surface.run()
             installed = set(surface.items)
-            expected = {'skin.amber', 'repository.serph91p'} | {r.addon_id for r in MEDIA_REQUIREMENTS}
+            from resources.lib.setupwizard.origins import ordered_requirements
+            expected = {r.addon_id for r in ordered_requirements(requirements_for(
+                PROFILES[1], REQUIREMENTS, PROFILE_REQUIREMENTS, MEDIA_REQUIREMENTS))}
             self.assertEqual(installed, expected)
             self.assertNotIn('skin.arctic.fuse.3', installed)
             self.assertNotIn('script.skinvariables', installed)

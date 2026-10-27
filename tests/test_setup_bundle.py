@@ -7,7 +7,7 @@ from xml.etree import ElementTree as ET
 import zipfile
 from tools.build_setup_bundle import build, manifest, VERSION, PROFILES
 from resources.lib.setupwizard.addons import (REQUIREMENTS, PROFILE_REQUIREMENTS,
-    MEDIA_REQUIREMENTS, REPOSITORY_REQUIREMENT, version_tuple)
+    MEDIA_REQUIREMENTS, PROFILE_REQUIREMENTS)
 from resources.lib.setupwizard.profiles import requirements_for
 
 
@@ -21,12 +21,13 @@ class NativeBundleTests(unittest.TestCase):
                 self.assertEqual(root.get('version'), VERSION)
                 imports = root.findall('./requires/import')
                 self.assertEqual(len(imports), len({x.get('addon') for x in imports}))
-                actual = {x.get('addon'): version_tuple(x.get('version')) for x in imports}
-                expected = {'xbmc.python': (3, 0, 0)}
-                for req in (REPOSITORY_REQUIREMENT,) + requirements_for(
+                actual = {x.get('addon'): x.get('version') for x in imports}
+                expected = {'xbmc.python': '3.0.0'}
+                for req in requirements_for(
                         profile, REQUIREMENTS, PROFILE_REQUIREMENTS, MEDIA_REQUIREMENTS):
-                    expected[req.addon_id] = req.min_version + (0,) * max(0, 3 - len(req.min_version))
+                    expected[req.addon_id] = req.min_version_string or '.'.join(map(str, req.min_version + (0,) * max(0, 3 - len(req.min_version))))
                 self.assertEqual(actual, expected)
+                self.assertFalse(any(addon.startswith('repository.') for addon in actual))
                 self.assertTrue(all(x.get('optional') is None for x in imports))
                 self.assertEqual(root.find('./extension[@point="xbmc.python.module"]').get('library'), 'lib')
                 self.assertEqual(len(root.findall('./extension')), 2)
@@ -60,6 +61,9 @@ class NativeBundleTests(unittest.TestCase):
                     if item.get('addon') != 'xbmc.python':
                         surface.items[item.get('addon')] = {
                             'addonid': item.get('addon'), 'version': item.get('version'), 'enabled': True}
+                from resources.lib.setupwizard.origins import ordered_requirements
+                for req in ordered_requirements(requirements_for(profile, REQUIREMENTS, PROFILE_REQUIREMENTS, MEDIA_REQUIREMENTS)):
+                    surface.items[req.addon_id] = {'addonid': req.addon_id, 'version': req.min_version_string or '.'.join(map(str, req.min_version)), 'enabled': True}
                 surface.run()
                 self.assertTrue(any('Alle benötigten Addons' in str(x) for x in surface.dialogs))
                 self.assertFalse(any(c.startswith(('InstallAddon(', 'enable')) for c in surface.commands))

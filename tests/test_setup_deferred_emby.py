@@ -61,7 +61,7 @@ class DeferredEmbyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); (root/'setupwizard-backups').mkdir()
             apply_common_layout(root, root/'setupwizard-backups'/'first', 'touch', n.empty_bindings())
-            surface = Surface(root)
+            surface = Surface(root,selections=[0])
             surface.run(('group=series', 'profile=touch'))
             self.assertEqual(surface.commands, ['Addon.OpenSettings(plugin.service.emby-next-gen)'])
             self.assertEqual(surface.settings, ['plugin.service.emby-next-gen'])

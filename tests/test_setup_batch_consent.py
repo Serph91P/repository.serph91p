@@ -34,6 +34,7 @@ class BatchConsentTests(unittest.TestCase):
     def test_declining_batch_does_not_refresh_install_or_enable(self):
         with tempfile.TemporaryDirectory() as tmp:
             surface = Surface(Path(tmp), [0, 6], ready=False)
+            initial_items = dict(surface.items)
             confirmations = []
             def yesno(_self, *args):
                 confirmations.append(args)
@@ -43,7 +44,7 @@ class BatchConsentTests(unittest.TestCase):
             self.assertEqual(len(confirmations), 1)
             self.assertEqual(surface.commands, [])
             self.assertEqual(surface.progress_events, [])
-            self.assertEqual(set(surface.items), {'repository.serph91p'})
+            self.assertEqual(surface.items, initial_items)
 
     def test_unapproved_direct_batch_is_rejected_without_actions(self):
         api, dialog, monitor, progress = Mock(), Mock(), Mock(), Mock()

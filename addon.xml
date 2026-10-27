@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="repository.serph91p" name="Serph91P Repository" version="1.0.1" provider-name="Serph91P">
+<addon id="repository.serph91p" name="Serph91P Repository" version="1.0.2" provider-name="Serph91P">
     <requires><import addon="xbmc.addon" version="12.0.0"/></requires>
     <extension point="xbmc.addon.repository" name="Serph91P Repository">
         <dir>
@@ -8,25 +8,19 @@
             <datadir zip="true">https://serph91p.github.io/repository.serph91p</datadir>
         </dir>
         <dir minversion="21.0.0" maxversion="21.9.999">
-            <info compressed="false">https://jurialmunkey.github.io/repository.jurialmunkey/omega/zips/addons.xml</info>
-            <checksum>https://jurialmunkey.github.io/repository.jurialmunkey/omega/zips/addons.xml.md5</checksum>
-            <datadir zip="true">https://jurialmunkey.github.io/repository.jurialmunkey/omega/zips</datadir>
+            <info compressed="false">https://serph91p.github.io/repository.serph91p/setup-bootstrap/repository.jurialmunkey/addons.xml</info>
+            <checksum>https://serph91p.github.io/repository.serph91p/setup-bootstrap/repository.jurialmunkey/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/jurialmunkey/repository.jurialmunkey/master/</datadir>
         </dir>
         <dir minversion="21.0.0" maxversion="21.9.999">
-            <info compressed="false">https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v21_omega/addons.xml</info>
-            <checksum>https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v21_omega/addons.xml.md5</checksum>
-            <datadir zip="true">https://embydata.com/downloads/addons/xbmb3c/multi-repo/beta/v21_omega</datadir>
+            <info compressed="false">https://serph91p.github.io/repository.serph91p/setup-bootstrap/repository.beta.emby.kodi/addons.xml</info>
+            <checksum>https://serph91p.github.io/repository.serph91p/setup-bootstrap/repository.beta.emby.kodi/addons.xml.md5</checksum>
+            <datadir zip="true">https://embydata.com/downloads/addons/xbmb3c/multi-repo/repositories/</datadir>
         </dir>
         <dir minversion="21.0.0" maxversion="21.9.999">
-            <info compressed="true">https://repo.kodinerds.net/addons/omega/addons.xml</info>
-            <checksum>https://repo.kodinerds.net/addons/omega/addons.xml.md5</checksum>
-            <datadir zip="true">https://repo.kodinerds.net/addons/omega/zip/</datadir>
-            <hashes>false</hashes>
-        </dir>
-        <dir minversion="21.0.0" maxversion="21.9.999">
-            <info compressed="true">https://repo.kodinerds.net/addons/matrix/addons.xml</info>
-            <checksum>https://repo.kodinerds.net/addons/matrix/addons.xml.md5</checksum>
-            <datadir zip="true">https://repo.kodinerds.net/addons/matrix/zip/</datadir>
+            <info compressed="false">https://serph91p.github.io/repository.serph91p/setup-bootstrap/repository.kodinerds/addons.xml</info>
+            <checksum>https://serph91p.github.io/repository.serph91p/setup-bootstrap/repository.kodinerds/addons.xml.md5</checksum>
+            <datadir zip="true">https://repo.kodinerds.net/addons/</datadir>
             <hashes>false</hashes>
         </dir>
     </extension>
@@ -34,8 +28,8 @@
         <platform>all</platform>
         <summary lang="en_GB">Serph91P Kodi Repository</summary>
         <summary lang="de_DE">Serph91P Kodi Repository</summary>
-        <description lang="en_GB">Custom Kodi addons. On Kodi 21 also exposes Jurialmunkey Omega, Emby Next Gen beta and Kodinerds Omega/Matrix catalogs for the setup wizard. Upstream catalogs and packages remain upstream-hosted; Kodi records their origin as this repository.</description>
-        <description lang="de_DE">Eigene Kodi-Addons. Unter Kodi 21 zusätzlich Jurialmunkey Omega, Emby Next Gen Beta und Kodinerds Omega/Matrix für den Setup-Assistenten. Kataloge und Pakete bleiben beim jeweiligen Anbieter; Kodi führt sie unter diesem Repository.</description>
+        <description lang="en_GB">Custom Kodi addons and three original repository-only bootstrap catalogs for Kodi 21. Original repository ZIPs remain upstream-hosted. Install original repositories explicitly before installing their addons; third-party leaf catalogs are not federated here.</description>
+        <description lang="de_DE">Eigene Kodi-Addons und drei Bootstrap-Kataloge ausschließlich für originale Repository-Addons unter Kodi 21. Originale Repository-ZIPs bleiben beim Anbieter. Original-Repositories vor deren Addons explizit installieren; keine fremden Inhaltskataloge unter diesem Repository.</description>
         <assets><icon>resources/icon.png</icon><fanart>resources/fanart.jpg</fanart></assets>
     </extension>
 </addon>

@@ -3,6 +3,7 @@
 These fixtures emulate Kodi; they are NOT a real-device acceptance test.
 """
 import json
+import sqlite3
 import runpy
 import sys
 import tempfile
@@ -29,24 +30,47 @@ def seed_nodes(root):
 
 class Surface:
     def __init__(self, profile, selections=(), ready=True, skin='skin.estuary', major=21, profile_index=0, repo_ready=True):
-        self.profile, self.selections, self.skin, self.major = profile, iter((profile_index, *selections)), skin, major
+        self.profile, self.selections, self.skin, self.major = profile, iter(selections), skin, major
+        self.profile_index = profile_index
         self.commands, self.dialogs, self.settings, self.log = [], [], [], []
         self.progress_events = []
         from resources.lib.setupwizard.regional import reference
         self.locale = reference()
-        self.touchmode = False
+        self.touchmode = skin == 'skin.estuary.modv2'  # Model an already configured active touch profile.
+        self.policy = 1
+        self.database_dir = tempfile.TemporaryDirectory()
+        self.database = Path(self.database_dir.name) / 'Addons33.db'
+        from resources.lib.setupwizard.origins import ORIGINS
+        with sqlite3.connect(self.database) as conn:
+            conn.execute('CREATE TABLE installed (addonID TEXT, origin TEXT)')
+            conn.execute('CREATE TABLE repo (id INTEGER, addonID TEXT, checksum TEXT)')
+            conn.execute('CREATE TABLE update_rules (addonID TEXT, updateRule INTEGER)')
+            for req in ALL_REQUIREMENTS:
+                conn.execute('INSERT INTO installed VALUES (?, ?)', (req.addon_id, ORIGINS[req.addon_id]))
+                if req.addon_id.startswith('repository.'):
+                    conn.execute('INSERT INTO repo VALUES (1, ?, ?)', (req.addon_id, 'indexed'))
         self.bad_response = False
         self.items = {r.addon_id: {'addonid': r.addon_id, 'enabled': True,
-            'version': '.'.join(map(str, r.min_version))} for r in ALL_REQUIREMENTS} if ready else {}
+            'version': (r.min_version_string or '.'.join(map(str, r.min_version)))} for r in ALL_REQUIREMENTS} if ready else {}
         if repo_ready:
             r = REPOSITORY_REQUIREMENT
-            self.items[r.addon_id] = {'addonid': r.addon_id, 'enabled': True, 'version': '1.0.1'}
+            self.items[r.addon_id] = {'addonid': r.addon_id, 'enabled': True, 'version': '1.0.2'}
+        self.items['repository.xbmc.org'] = {'addonid': 'repository.xbmc.org', 'enabled': True, 'version': '3.3.1'}
         surface = self
         class Monitor:
             def abortRequested(self): return False
             def waitForAbort(self, delay): return True  # Cancel waits, never stall tests.
         class Dialog:
-            def select(self, title, labels): return next(surface.selections, -1)
+            def select(self, title, labels):
+                if 'Skin-Profil wählen' in title:
+                    return surface.profile_index
+                # Existing route tests explicitly exercise the preserved Expert / Tools menu.
+                # Guided first-run/resume behavior has independent flow tests.
+                if '— Einrichtung fortsetzen' in title or '— Setup zurückgelesen' in title:
+                    if getattr(surface, 'expert_entered', False): return -1
+                    surface.expert_entered = True
+                    return 1 if '— Einrichtung fortsetzen' in title else 2
+                return next(surface.selections, -1)
             def yesno(self, *args): return True
             def ok(self, *args): surface.dialogs.append(args)
             def textviewer(self, *args): surface.dialogs.append(args)
@@ -66,9 +90,34 @@ class Surface:
             'xbmcgui': types.SimpleNamespace(Dialog=Dialog, DialogProgressBG=DialogProgressBG),
             'xbmcvfs': types.SimpleNamespace(translatePath=self.translate),
         }
+    def __del__(self):
+        directory = getattr(self, 'database_dir', None)
+        if directory is not None:
+            directory.cleanup()
+
     def translate(self, path):
+        if path == 'special://database': return self.database_dir.name
         if path != 'special://profile': raise AssertionError(path)
         return str(self.profile)
+    def native_skin_path(self,skin,force=False):
+        # Unit-only native compiler model; real Kodi evidence is separate.
+        from xml.etree import ElementTree as ET
+        from resources.lib.setupwizard.menus import _expected
+        key={'skin.amber':'amber','skin.estuary.modv2':'touch'}[skin]
+        target=Path(self.database_dir.name)/'native-skins'/skin
+        (target/'xml').mkdir(parents=True,exist_ok=True)
+        (target/'addon.xml').write_text('<addon id="'+skin+'"><extension point="xbmc.gui.skin"><res folder="xml"/></extension></addon>')
+        output=target/'xml/script-skinshortcuts-includes.xml'
+        if force or not output.exists():
+            tree=ET.Element('includes')
+            include=ET.SubElement(tree,'include',{'name':'skinshortcuts-mainmenu'})
+            for label,action in _expected(self.profile,key):
+                item=ET.SubElement(include,'item')
+                ET.SubElement(item,'label').text=label
+                ET.SubElement(item,'onclick').text=action
+            output.write_bytes(ET.tostring(tree))
+        return target
+
     def rpc(self, data):
         if self.bad_response: return 'not json'
         request = json.loads(data)
@@ -79,10 +128,16 @@ class Surface:
             if params['addonid'] not in self.items:
                 return json.dumps({'jsonrpc':'2.0','id':1,'error': {'code':-32602,'message':'Invalid params.'}})
             result = {'addon': self.items[params['addonid']]}
+            if 'path' in params.get('properties',[]):
+                result={'addon':dict(result['addon'],path=str(self.native_skin_path(params['addonid'])))}
         elif method == 'Addons.SetAddonEnabled':
             self.items[params['addonid']]['enabled'] = params['enabled']; result = 'OK'
         elif method == 'Settings.GetSettingValue':
-            result = {'value': self.locale[params['setting']]}
+            if params['setting'] == 'addons.updatemode': value = self.policy
+            elif params['setting'] == 'general.addonupdates': value = 0
+            elif params['setting'] == 'lookandfeel.skin': value = self.skin
+            else: value = self.locale[params['setting']]
+            result = {'value': value}
         elif method == 'Settings.SetSettingValue':
             self.locale[params['setting']] = params['value']
             self.commands.append('SetSettingValue('+params['setting']+')')
@@ -93,6 +148,11 @@ class Surface:
     def assert_request(request):
         assert request['jsonrpc'] == '2.0' and request['id'] == 1
     def condition(self, expression):
+        # This emulator represents official Kodi Android unless a test explicitly
+        # replaces platform detection. It is not Android/native acceptance.
+        if expression == 'System.Platform.Android': return True
+        if expression == 'System.Platform.Linux': return False
+        if expression == 'Window.IsVisible(10100)': return getattr(self, 'keep_dialog', False)
         if expression != 'Skin.HasSetting(touchmode)':
             raise AssertionError(expression)
         return self.touchmode
@@ -105,9 +165,13 @@ class Surface:
         elif command.startswith('InstallAddon('):
             addon_id = command[len('InstallAddon('):-1]
             req = next(r for r in ALL_REQUIREMENTS if r.addon_id == addon_id)
-            self.items[addon_id] = {'addonid':addon_id, 'enabled': True, 'version': '.'.join(map(str,req.min_version))}
+            self.items[addon_id] = {'addonid':addon_id, 'enabled': True, 'version': (req.min_version_string or '.'.join(map(str, req.min_version)))}
         elif command == 'UpdateAddonRepos':
             pass
+        elif command == 'SetProperty(skinshortcuts-reloadmainmenu,True,home)':
+            pass
+        elif command == 'RunScript(script.skinshortcuts,type=buildxml&mainmenuID=9000&group=mainmenu)':
+            self.native_skin_path(self.skin,force=True)
         elif command == 'Addon.OpenSettings(plugin.service.emby-next-gen)':
             self.settings.append('plugin.service.emby-next-gen')
         elif not command.startswith('ActivateWindow('):
@@ -126,8 +190,9 @@ class WizardTests(unittest.TestCase):
     def test_actual_module_surface_default_to_install_all(self):
         with tempfile.TemporaryDirectory() as tmp:
             s = Surface(Path(tmp), [0,6], ready=False); s.run()
-            self.assertEqual(set(s.items), {r.addon_id for r in REQUIREMENTS + MEDIA_REQUIREMENTS} | {REPOSITORY_REQUIREMENT.addon_id})
-            self.assertEqual(len(s.commands), 1 + len(REQUIREMENTS + MEDIA_REQUIREMENTS))
+            from resources.lib.setupwizard.origins import ordered_requirements
+            self.assertEqual(set(s.items), {r.addon_id for r in ordered_requirements(REQUIREMENTS + MEDIA_REQUIREMENTS)})
+            self.assertEqual(len(s.commands), 4 + len(REQUIREMENTS + MEDIA_REQUIREMENTS))
             self.assertFalse(any('Restart' in x or 'Reload' in x or 'Skin.SetSkin' in x for x in s.commands))
             self.assertTrue(any('Alle benötigten Addons' in str(x) for x in s.dialogs))
     def test_progress_tracks_verified_addons_and_closes(self):
@@ -151,7 +216,7 @@ class WizardTests(unittest.TestCase):
             s.run()
             self.assertEqual(s.progress_events[-1], ('close',))
             self.assertFalse(any(e[0] == 'update' and e[1] == 100 for e in s.progress_events))
-            self.assertTrue(any('Einrichtung unvollständig. Arctic Fuse 3' in str(x) for x in s.dialogs))
+            self.assertTrue(any('Einrichtung unvollständig. Jurialmunkey Repository' in str(x) for x in s.dialogs))
             self.assertFalse(any('Alle benötigten Addons' in str(x) for x in s.dialogs))
 
     def test_progress_exception_always_closes(self):
@@ -199,12 +264,14 @@ class WizardTests(unittest.TestCase):
             self.assertTrue(any('Medienmenü geschrieben' in str(x) for x in s.dialogs))
             self.assertTrue(any('wiederhergestellt' in str(x) for x in s.dialogs))
             self.assertFalse((root / 'userdata').exists())
-            self.assertFalse(any(root.glob('addon_data/**/*.json')))
+            self.assertEqual(list(root.glob('addon_data/**/*.json')),
+                             [root / 'addon_data/script.serph91p.setup/setup-state.json'])
             self.assertEqual(s.commands, [])
     def test_live_arctic_refuses_configuration_write(self):
         with tempfile.TemporaryDirectory() as tmp:
             s = Surface(Path(tmp), [1,3,6], skin='skin.arctic.fuse.3'); s.run()
-            self.assertEqual(list(Path(tmp).iterdir()), [])
+            self.assertFalse(list(Path(tmp).glob('addon_data/script.skinvariables/*')))
+            self.assertFalse((Path(tmp) / 'setupwizard-backups').exists())
             self.assertTrue(any('Estuary' in str(x) for x in s.dialogs))
     def test_emBy_settings_route(self):
         with tempfile.TemporaryDirectory() as tmp:

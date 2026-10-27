@@ -10,6 +10,7 @@ concurrency:
 
 jobs:
   build-repository:
+    if: github.repository == 'Serph91P/repository.serph91p' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -29,10 +30,12 @@ jobs:
         run: python scripts/build_repository.py --download-current-manifest
 
       - name: Build repository
+        if: github.event_name == 'repository_dispatch'
         env:
           SOURCE_GITHUB_TOKEN: ${{ secrets.SOURCE_ARTIFACT_TOKEN }}
           DISPATCH_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
-        run: python scripts/build_repository.py
+          TARGET_COMMIT: ${{ github.sha }}
+        run: python scripts/build_repository.py --target-commit "$TARGET_COMMIT"
 
       - name: Validate generated Pages manifest
         run: python scripts/build_repository.py --validate-site

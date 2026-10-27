@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -1580,7 +1581,73 @@ def promote_repository_outputs(staging, repo_output, site_output):
             shutil.rmtree(backup)
 
 
-def build_immutable_repository(dispatch_payload, repo_root=None):
+def _setup_publication():
+    # Both package imports (tests) and direct CLI execution are supported.
+    if __package__:
+        from . import setup_publication
+    else:
+        import setup_publication
+    return setup_publication
+
+
+def _preserve_public_entries(repo_root, current_versions, excluded, staging_repo, temp_dir):
+    """Preserve manifest-bound public entries, never promote a new external source."""
+    published = []
+    configs = {config['addon_id']: config for config in ADDONS}
+    for addon_id, version in current_versions.items():
+        if addon_id in excluded:
+            continue
+        filename = f'{addon_id}-{version}.zip'
+        directory = temp_dir / ('preserved-' + addon_id)
+        directory.mkdir(parents=True)
+        package = directory / filename
+        download_current_package(addon_id, version, package)
+        validate_archive_topology(package, addon_id, version,
+                                  configs.get(addon_id, {}).get('runtime_entries'))
+        published.append(publish_validated_addon(package, filename, staging_repo))
+    return published
+
+
+def build_first_party_repository(target_commit, repo_root=None):
+    """Build target-owned Wizard and bootstrap; preserve current public externals.
+
+    This is not an alternate external-artifact intake. No dispatch, upstream
+    source archive, caller-chosen ZIP, or upstream workflow evidence is accepted.
+    """
+    repo_root = Path(repo_root or REPO_ROOT)
+    setup = _setup_publication()
+    setup.verify_checkout(repo_root, target_commit)
+    current_versions = _current_manifest_versions(repo_root)
+    required = {config['addon_id'] for config in ADDONS}
+    if not required.issubset(current_versions):
+        raise RuntimeError('Current public manifest is missing configured add-ons')
+    staging, temp_dir = repo_root / '_staging', repo_root / '_temp'
+    if staging.exists() or temp_dir.exists():
+        raise RuntimeError('Publication staging or temp path already exists')
+    staging_repo, staging_site = staging / 'repo', staging / '_site'
+    try:
+        staging_repo.mkdir(parents=True)
+        temp_dir.mkdir()
+        published = [setup.stage(sys.modules[__name__], repo_root, target_commit,
+                                 temp_dir, staging_repo)]
+        published.extend(_preserve_public_entries(
+            repo_root, current_versions, {REPO_ADDON_ID, setup.ADDON_ID}, staging_repo, temp_dir))
+        package, version = _create_repository_package_in(repo_root, temp_dir)
+        _check_version_monotonicity(repo_root, REPO_ADDON_ID, version)
+        published.append(publish_release_zip(package, REPO_ADDON_ID, version, package.name, staging_repo))
+        manifest = _write_addons_xml(published, staging_repo / 'addons.xml')
+        (staging_repo / 'addons.xml.md5').write_text(hashlib.md5(manifest).hexdigest())
+        create_pages_site(staging_repo, staging_site)
+        validate_site_manifest(staging_site)
+        setup.validate_site(staging_site)
+        setup.verify_checkout(repo_root, target_commit)
+        promote_repository_outputs(staging, repo_root / 'repo', repo_root / '_site')
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def build_immutable_repository(dispatch_payload, repo_root=None, target_commit=None):
     """Build the repository from an immutable validated dispatch payload."""
     if repo_root is None:
         repo_root = REPO_ROOT
@@ -1737,6 +1804,17 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
                 )
                 print(f"  Preserved: v{version}")
 
+            # First-party source has its own target-commit trust contract; it is
+            # never admitted through the external artifact/dispatch protocol.
+            extra_excluded = {config['addon_id'] for config in ADDONS} | {REPO_ADDON_ID}
+            if target_commit is not None:
+                setup = _setup_publication()
+                published.append(setup.stage(sys.modules[__name__], repo_root,
+                                             target_commit, temp_dir, staging_repo))
+                extra_excluded.add(setup.ADDON_ID)
+            published.extend(_preserve_public_entries(
+                repo_root, current_versions, extra_excluded, staging_repo, temp_dir))
+
             print(f"\nProcessing: {REPO_ADDON_ID} (self)")
             package_path, version = _create_repository_package_in(repo_root, temp_dir)
             _check_version_monotonicity(repo_root, REPO_ADDON_ID, version)
@@ -1757,6 +1835,8 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
             (staging_repo / "addons.xml.md5").write_text(checksum, encoding="utf-8")
             create_pages_site(staging_repo, staging_site)
             validate_site_manifest(staging_site)
+            if target_commit is not None:
+                _setup_publication().validate_site(staging_site)
         finally:
             if temp_dir.exists():
                 shutil.rmtree(temp_dir)
@@ -1770,6 +1850,8 @@ def build_immutable_repository(dispatch_payload, repo_root=None):
                 f"{candidate_sha!r}"
             )
 
+        if target_commit is not None:
+            _setup_publication().verify_checkout(repo_root, target_commit)
         promote_repository_outputs(staging, repo_root / "repo", repo_root / "_site")
         staging.rmdir()
 
@@ -1885,7 +1967,12 @@ def main():
         action="store_true",
         help="download the current public repository manifest",
     )
+    parser.add_argument('--first-party', action='store_true',
+                        help='stage only target-owned source and preserve public external packages')
+    parser.add_argument('--target-commit', help='exact checked-out target repository HEAD')
     arguments = parser.parse_args()
+    if arguments.first_party and (not arguments.target_commit or arguments.validate_site or arguments.download_current_manifest):
+        parser.error('--first-party requires --target-commit and an exclusive build mode')
     if arguments.validate_site and arguments.download_current_manifest:
         parser.error("validation and manifest download modes are mutually exclusive")
     if arguments.download_current_manifest:
@@ -1893,12 +1980,18 @@ def main():
     elif arguments.validate_site:
         validate_site_manifest()
         print(f"Validated generated site: {SITE_OUTPUT}")
+    elif arguments.first_party:
+        if os.environ.get('DISPATCH_PAYLOAD', '').strip():
+            parser.error('first-party mode must not receive external dispatch evidence')
+        build_first_party_repository(arguments.target_commit)
     else:
         dispatch_payload_json = os.environ.get("DISPATCH_PAYLOAD", "").strip()
         if dispatch_payload_json:
             dispatch_payload = json.loads(dispatch_payload_json)
-            build_immutable_repository(dispatch_payload)
+            build_immutable_repository(dispatch_payload, target_commit=arguments.target_commit)
         else:
+            if arguments.target_commit:
+                parser.error('--target-commit requires --first-party or an external dispatch')
             build_repository()
 
 

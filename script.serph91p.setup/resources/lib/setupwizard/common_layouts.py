@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from .config import (SKIN_NODE, SKIN_SETTINGS, SAFE_SETTINGS, ARCTIC_REFERENCE_ICONS, POLICIES, COMMON_POLICY_IDS,
-                     _profile, _target, _merge_skin_settings, apply_payloads)
+                     _profile, _target, _merge_skin_settings, apply_payloads, MAX_FILE_BYTES)
 from .navigation import groups, action, group_action, binding_path, binding_bytes
 
 
@@ -23,6 +23,17 @@ def _shortcut(root, label, builtin, identity, properties=()):
 
 def _xml(root):
     return ET.tostring(root, encoding='utf-8', xml_declaration=True)
+
+
+def _existing_skin_settings(target):
+    if not target.exists():
+        return None
+    if target.stat().st_size > MAX_FILE_BYTES:
+        raise ValueError('skin settings exceed safe size limit')
+    data = target.read_bytes()
+    if b'<!DOCTYPE' in data.upper() or b'<!ENTITY' in data.upper():
+        raise ValueError('skin settings declarations are not supported')
+    return data
 
 
 def common_payloads(profile, profile_id, bindings):
@@ -55,7 +66,7 @@ def common_payloads(profile, profile_id, bindings):
                 settings[prefix + '.Shortcut.Target'] = ''
         target = _target(profile, SKIN_SETTINGS)
         payload[SKIN_SETTINGS] = _merge_skin_settings(
-            target.read_bytes() if target.exists() else None, settings, types)
+            _existing_skin_settings(target), settings, types)
     elif profile_id in ('amber', 'touch'):
         prefix = 'skin.amber-' if profile_id == 'amber' else ''
         root_path = 'addon_data/script.skinshortcuts/' + prefix
@@ -114,7 +125,8 @@ def common_payloads(profile, profile_id, bindings):
                     payload[root_path + 'skin.estuary.modv2-' + path[len(root_path):]] = content
             rel = 'addon_data/skin.estuary.modv2/settings.xml'
             target = _target(profile, rel)
-            settings = ET.fromstring(target.read_bytes()) if target.exists() else ET.Element('settings', {'version': '2'})
+            existing = _existing_skin_settings(target)
+            settings = ET.fromstring(existing) if existing is not None else ET.Element('settings', {'version': '2'})
             if settings.tag != 'settings':
                 raise ValueError('invalid MOD V2 settings root')
             for old in list(settings.findall('setting')):
