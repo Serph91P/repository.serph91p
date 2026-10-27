@@ -66,7 +66,7 @@ class SetupPublicationTests(unittest.TestCase):
     def test_staged_site_wizard_bootstrap_originals_not_mirrored(self):
         self.build()
         site = self.root / '_site'
-        package = site / setup.ADDON_ID / (setup.ADDON_ID + '-0.4.0.zip')
+        package = site / setup.ADDON_ID / (setup.ADDON_ID + '-0.4.1.zip')
         self.assertTrue(package.is_file())
         self.assertIn(package.name, (package.parent / 'index.html').read_text())
         ids = {a.get('id') for a in ET.parse(site / 'addons.xml').getroot()}
@@ -211,7 +211,7 @@ class SetupPublicationTests(unittest.TestCase):
         setup.validate_site(site)
         ids = {a.get('id') for a in ET.parse(site / 'addons.xml').getroot()}
         self.assertEqual(ids, {'plugin.video.twitch', 'plugin.unrelated', setup.ADDON_ID, 'repository.serph91p'})
-        self.assertTrue((site / setup.ADDON_ID / (setup.ADDON_ID + '-0.4.0.zip')).is_file())
+        self.assertTrue((site / setup.ADDON_ID / (setup.ADDON_ID + '-0.4.1.zip')).is_file())
 
     def test_workflow_has_explicit_nonrecursive_target_source_mode(self):
         workflow = (ROOT / '.github/workflows/publish-setup-source.yml').read_text()

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="repository.serph91p" name="Serph91P Repository" version="1.0.2" provider-name="Serph91P">
+<addon id="repository.serph91p" name="Serph91P Repository" version="1.0.3" provider-name="Serph91P">
     <requires><import addon="xbmc.addon" version="12.0.0"/></requires>
     <extension point="xbmc.addon.repository" name="Serph91P Repository">
         <dir>

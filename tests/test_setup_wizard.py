@@ -43,18 +43,19 @@ class Surface:
         from resources.lib.setupwizard.origins import ORIGINS
         with sqlite3.connect(self.database) as conn:
             conn.execute('CREATE TABLE installed (addonID TEXT, origin TEXT)')
-            conn.execute('CREATE TABLE repo (id INTEGER, addonID TEXT, checksum TEXT)')
+            conn.execute('CREATE TABLE repo (id INTEGER, addonID TEXT, checksum TEXT, version TEXT)')
             conn.execute('CREATE TABLE update_rules (addonID TEXT, updateRule INTEGER)')
             for req in ALL_REQUIREMENTS:
                 conn.execute('INSERT INTO installed VALUES (?, ?)', (req.addon_id, ORIGINS[req.addon_id]))
                 if req.addon_id.startswith('repository.'):
-                    conn.execute('INSERT INTO repo VALUES (1, ?, ?)', (req.addon_id, 'indexed'))
+                    version = '3.3.1' if req.addon_id == 'repository.xbmc.org' else '.'.join(map(str, req.min_version))
+                    conn.execute('INSERT INTO repo VALUES (1, ?, ?, ?)', (req.addon_id, 'indexed', version))
         self.bad_response = False
         self.items = {r.addon_id: {'addonid': r.addon_id, 'enabled': True,
             'version': (r.min_version_string or '.'.join(map(str, r.min_version)))} for r in ALL_REQUIREMENTS} if ready else {}
         if repo_ready:
             r = REPOSITORY_REQUIREMENT
-            self.items[r.addon_id] = {'addonid': r.addon_id, 'enabled': True, 'version': '1.0.2'}
+            self.items[r.addon_id] = {'addonid': r.addon_id, 'enabled': True, 'version': '1.0.3'}
         self.items['repository.xbmc.org'] = {'addonid': 'repository.xbmc.org', 'enabled': True, 'version': '3.3.1'}
         surface = self
         class Monitor:

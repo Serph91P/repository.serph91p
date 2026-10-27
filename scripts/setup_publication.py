@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path
 
 ADDON_ID = 'script.serph91p.setup'
-VERSION = '0.4.0'
+VERSION = '0.4.1'
 SOURCE_REPOSITORY = 'Serph91P/repository.serph91p'
 INPUTS = ('addon.xml', 'resources', ADDON_ID, 'setup-bootstrap',
           'tools/build_setup_addon.py', 'tools/build_setup_bootstrap.py')

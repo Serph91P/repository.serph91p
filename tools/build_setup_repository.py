@@ -22,7 +22,7 @@ def build(output_dir):
         if parent.is_symlink():
             raise ValueError('symlink output path')
     out.mkdir(parents=True, exist_ok=True)
-    target = out / 'repository.serph91p-1.0.2.zip'
+    target = out / 'repository.serph91p-1.0.3.zip'
     if target.is_symlink() or (target.exists() and not target.is_file()):
         raise ValueError('invalid repository target')
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:

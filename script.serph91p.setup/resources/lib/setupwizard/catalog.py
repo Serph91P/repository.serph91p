@@ -10,14 +10,15 @@ import sqlite3
 import stat
 import time
 from .config import _no_symlink_ancestors
-from .addons import ALL_REQUIREMENTS
+from .addons import ALL_REQUIREMENTS, version_at_least
 
 REPOSITORIES = frozenset(r.addon_id for r in ALL_REQUIREMENTS if r.addon_id.startswith('repository.'))
 
 
 class SQLiteCatalogReader:
-    def __init__(self, translate_path):
+    def __init__(self, translate_path, version_read_fn=None):
         self.translate_path = translate_path
+        self.version_read_fn = version_read_fn
 
     def __call__(self, repository_id):
         if repository_id not in REPOSITORIES:
@@ -39,10 +40,14 @@ class SQLiteCatalogReader:
                     return False
             connection = sqlite3.connect(database.as_uri() + '?mode=ro', uri=True, timeout=0)
             connection.execute('PRAGMA query_only=ON')
-            rows = connection.execute('SELECT addonID, checksum FROM repo WHERE addonID = ? LIMIT 2',
+            rows = connection.execute('SELECT addonID, checksum, version FROM repo WHERE addonID = ? LIMIT 2',
                                       (repository_id,)).fetchall()
-            return (len(rows) == 1 and rows[0][0] == repository_id
-                    and isinstance(rows[0][1], str) and bool(rows[0][1].strip()))
+            indexed = (len(rows) == 1 and rows[0][0] == repository_id
+                       and isinstance(rows[0][1], str) and bool(rows[0][1].strip()))
+            if indexed and self.version_read_fn is not None:
+                expected = self.version_read_fn(repository_id)
+                return isinstance(expected, str) and version_at_least(rows[0][2], expected)
+            return indexed
         except (OSError, ValueError, sqlite3.Error):
             return False
         finally:

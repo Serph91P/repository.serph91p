@@ -15,10 +15,10 @@ from .layouts import describe_layout
 from .profiles import PROFILES, requirements_for
 
 TITLE = 'Serph91P Kodi Setup'
-REPOSITORIES = ('Benötigt Serph91P Repository 1.0.2 oder neuer und vorhandenes repository.xbmc.org. '
+REPOSITORIES = ('Benötigt das vorhandene Serph91P Repository und repository.xbmc.org. '
     'Originalquellen: repository.jurialmunkey, repository.beta.emby.kodi, repository.kodinerds. '
-    'Diese Repository-Addons werden ausdrücklich nativ installiert. '
-    'Im Teststand das beigefügte Repository-ZIP einmal installieren/aktualisieren; '
+    'Das eigene Repository muss den veröffentlichten Stand 1.0.3 haben; bei älterem Stand öffnet der Assistent dessen native Aktualisierung. Fehlende Original-Repositories fügt er anschließend selbst über Kodi hinzu. '
+    'Native Bestätigungen bleiben sichtbar; keine manuelle Suche nach Repository-ZIPs. '
     'IPTV Simple: Kodi-Originalrepo oder geprüftes LibreELEC-Systemrepo; allgemeine Linux-Pakete bleiben OS-verwaltet und ungeprüft. Gepflegte Serph91P-Ausnahmen: '
     'Twitch 3.1.11, TubeCast 1.6.1+omega.2, Gronkh.tv 2.3.10. '
     'Abweichende bestehende Herkunft: in Kodi Addon-Informationen / Versionen das Original-Repository '
@@ -36,6 +36,7 @@ def install_with_progress(api, required, dialog, monitor, progress, log, *, appr
         total = len(required)
         repositories = tuple(r.addon_id for r in required if r.addon_id.startswith('repository.'))
         catalog_checked = False
+        bootstrap_checked = False
         for index, req in enumerate(required):
             current = req.label
             if monitor.abortRequested():
@@ -50,6 +51,14 @@ def install_with_progress(api, required, dialog, monitor, progress, log, *, appr
                 update(message)
 
             update('Prüfung läuft')
+            if req.addon_id.startswith('repository.') and req.addon_id not in ('repository.serph91p', 'repository.xbmc.org', 'repository.libreelec.tv') and not bootstrap_checked:
+                from .catalog import wait_for_catalog
+                if catalog_reader is None:
+                    return False, 'Native Bootstrap-Katalogprüfung nicht verfügbar; keine Original-Repositories installiert.'
+                api.xbmc.executebuiltin('UpdateAddonRepos', wait=True)
+                if not wait_for_catalog(catalog_reader, ('repository.serph91p',), monitor, update):
+                    return False, 'Aktualisierter Bootstrap-Katalogindex nicht bereit; keine Original-Repositories installiert.'
+                bootstrap_checked = True
             if not req.addon_id.startswith('repository.') and not catalog_checked:
                 from .catalog import wait_for_catalog
                 if catalog_reader is None:
@@ -61,7 +70,9 @@ def install_with_progress(api, required, dialog, monitor, progress, log, *, appr
             ready, status = check_requirement(api, req)
             if status.startswith('Herkunft'):
                 return False, req.label + ': ' + status + '. Native Kodi Versionen/Original-Repository oder manuelle Neuinstallation verwenden.'
-            if req.addon_id in ('repository.serph91p', 'repository.xbmc.org') and not ready:
+            if req.addon_id == 'repository.serph91p' and not ready:
+                return False, req.label + ': vorhandene eigene Quelle nativ aktualisieren/aktivieren; keine manuelle Installation der Original-Repositories erforderlich.'
+            if req.addon_id == 'repository.xbmc.org' and not ready:
                 return False, req.label + ': muss bereits nativ vorhanden und bereit sein.'
             okay = ensure_requirement(api, req,
                 lambda _prompt: True,  # Fixed allowlisted batch already approved above.
@@ -277,11 +288,17 @@ def run(argv=None):
                         return
                     continue
                 repo_ok, repo_status = check_requirement(api, REPOSITORY_REQUIREMENT)
-                if not repo_ok:
+                if not repo_ok and (repo_status in ('nicht installiert', 'API-Fehler') or repo_status.startswith('Herkunft')):
                     dialog.ok(TITLE, 'Setup-Quellen fehlen oder sind nicht bereit: ' + repo_status + '\n' + REPOSITORIES)
                     if guiding:
                         return
                     continue
+                if not repo_ok:
+                    if dialog.yesno(TITLE, 'Das vorhandene Serph91P Repository muss zuerst nativ auf 1.0.3 oder neuer aktualisiert/aktiviert werden. '
+                            'Repository-Liste öffnen, Serph91P wählen und native Aktualisierung bestätigen? Danach den Wizard erneut öffnen; '
+                            'Jurialmunkey/Emby/Kodinerds werden vom Wizard selbst hinzugefügt. Keine manuelle ZIP-Suche.'):
+                        xbmc.executebuiltin('ActivateWindow(AddonBrowser,addons://user/xbmc.addon.repository,return)')
+                    return
                 official = next(r for r in required if r.addon_id == 'repository.xbmc.org')
                 if not check_requirement(api, official)[0]:
                     dialog.ok(TITLE, 'Offizielles repository.xbmc.org muss bereits vorhanden, aktiv und prüfbar sein. Keine Installation über Bootstrap.')
@@ -306,18 +323,8 @@ def run(argv=None):
                         xbmc.executebuiltin('ActivateWindow(systemsettings)')
                     return
                 from .catalog import SQLiteCatalogReader, wait_for_catalog
-                catalog_reader = SQLiteCatalogReader(xbmcvfs.translatePath)
-                xbmc.executebuiltin('UpdateAddonRepos', wait=True)
-                indexing = xbmcgui.DialogProgressBG()
-                try:
-                    indexing.create(TITLE, 'Bootstrap-Katalogindex wird zurückgelesen ...')
-                    indexed = wait_for_catalog(catalog_reader, ('repository.serph91p',), monitor,
-                        lambda message: indexing.update(0, TITLE, message))
-                finally:
-                    indexing.close()
-                if not indexed:
-                    dialog.ok(TITLE, 'Bootstrap-Katalogindex nicht bereit. Keine Addons installiert; später fortsetzen.')
-                    return
+                catalog_reader = SQLiteCatalogReader(xbmcvfs.translatePath,
+                    version_read_fn=lambda addon_id: (api.details(addon_id) or {}).get('version'))
                 okay, detail = install_with_progress(api, required, dialog, monitor,
                     xbmcgui.DialogProgressBG(), log, approved=True, catalog_reader=catalog_reader)
                 if monitor.abortRequested():

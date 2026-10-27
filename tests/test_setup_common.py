@@ -200,9 +200,9 @@ class CommonTests(unittest.TestCase):
             with zipfile.ZipFile(a) as z:
                 self.assertIsNone(z.testzip());self.assertEqual(len(z.namelist()),3)
                 meta=ET.fromstring(z.read('repository.serph91p/addon.xml'))
-                self.assertEqual(meta.get('version'),'1.0.2')
+                self.assertEqual(meta.get('version'),'1.0.3')
         wizard=ET.parse(ADDON/'addon.xml').getroot()
-        self.assertIn({'addon':'repository.serph91p','version':'1.0.2'}, [x.attrib for x in wizard.findall('./requires/import')])
+        self.assertFalse([x for x in wizard.findall('./requires/import') if x.get('addon','').startswith('repository.')])
 
 
 if __name__ == '__main__': unittest.main()

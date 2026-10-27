@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="script.serph91p.setup" name="Serph91P Setup Wizard" version="0.4.0" provider-name="Serph91P">
+<addon id="script.serph91p.setup" name="Serph91P Setup Wizard" version="0.4.1" provider-name="Serph91P">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
-    <import addon="repository.serph91p" version="1.0.2" />
   </requires>
   <extension point="xbmc.python.script" library="default.py">
     <provides>executable</provides>
@@ -10,8 +9,8 @@
   <extension point="xbmc.addon.metadata">
     <summary lang="en_GB">Guided skin and media setup for Kodi</summary>
     <summary lang="de_DE">Geführte Skin- und Medieneinrichtung für Kodi</summary>
-    <description lang="en_GB">Kodi 21 development candidate: resumable setup with live state inspection, original repository origins, Arctic Fuse 3, Amber or current Omega Estuary MOD V2. Requires bootstrap repository 1.0.2. Credentials stay local. No release or device approval.</description>
-    <description lang="de_DE">Kodi-21-Entwicklungskandidat: wiederaufnehmbare Einrichtung mit echter Zustandsprüfung, ursprünglichen Repository-Herkünften, Arctic Fuse 3, Amber oder aktuellem Omega Estuary MOD V2. Benötigt Bootstrap-Repository 1.0.2. Zugangsdaten bleiben lokal. Keine Release- oder Geräteabnahme.</description>
+    <description lang="en_GB">Kodi 21 development candidate: resumable setup with live state inspection, native original-repository bootstrap, Arctic Fuse 3, Amber or current Omega Estuary MOD V2. Uses existing bootstrap repository 1.0.3; no manual original-repository ZIP installation. Credentials stay local. No release or device approval.</description>
+    <description lang="de_DE">Kodi-21-Entwicklungskandidat: wiederaufnehmbare Einrichtung mit echter Zustandsprüfung, nativem Original-Repository-Bootstrap, Arctic Fuse 3, Amber oder aktuellem Omega Estuary MOD V2. Verwendet das bestehende Bootstrap-Repository 1.0.3; keine manuelle Installation der Original-Repository-ZIPs. Zugangsdaten bleiben lokal. Keine Release- oder Geräteabnahme.</description>
     <platform>all</platform>
     <license>GPL-2.0-or-later</license>
   </extension>

@@ -115,7 +115,7 @@ def local_files(site=SITE):
 
 def validate_root():
     root = ET.parse(ROOT / 'addon.xml').getroot()
-    if (root.get('id'), root.get('version')) != ('repository.serph91p', '1.0.2'):
+    if (root.get('id'), root.get('version')) != ('repository.serph91p', '1.0.3'):
         raise ValueError('unexpected own repository identity/version')
     dirs = root.findall("extension[@point='xbmc.addon.repository']/dir")
     expected = [(PAGES + '/addons.xml', PAGES)] + [

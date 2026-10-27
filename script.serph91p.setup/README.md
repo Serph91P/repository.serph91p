@@ -1,10 +1,12 @@
 # Serph91P Kodi Setup Wizard
 
-**0.4.0 development candidate for Kodi 21/Omega. Integration/review in progress; not released or device-approved.**
+**0.4.1 development candidate for Kodi 21/Omega. Not released or device-approved.**
 
 ## One repository, three profiles
 
-The paired `repository.serph91p` **1.0.2** candidate exposes its own catalog plus three **repository-addon-only bootstrap catalogs**. The wizard explicitly installs `repository.jurialmunkey`, `repository.beta.emby.kodi`, and/or `repository.kodinerds` as required by the selected profile, before installing leaf add-ons. Original repository ZIPs remain on their original hosts. Kodi records each repository's own ID and leaf add-ons' actual installing repository. The former upstream-leaf federation under Serph91P is removed.
+The paired `repository.serph91p` **1.0.3** candidate exposes its own catalog plus three **repository-addon-only bootstrap catalogs**. Install the wizard from the existing Serph91P repository. The wizard itself requests native installation of missing `repository.jurialmunkey`, `repository.beta.emby.kodi`, and/or `repository.kodinerds`, as required by the selected profile, before installing leaf add-ons. Users confirm Kodi's native prompts, not manually locate/install three companion ZIPs. Original repository ZIPs remain on their original hosts. Kodi records each repository's own ID and leaf add-ons' actual installing repository. The former upstream-leaf federation under Serph91P is removed.
+
+There are no repository dependency imports, including the own repository: Kodi explicitly refuses that installation mechanism. The own source is checked at runtime. An old own repository must be updated through Kodi's native repository UI; `InstallAddon` does not update an already installed add-on. The wizard opens that UI instead of pretending to update it or timing out. Catalog readiness also checks the indexed version against the installed repository, so a stale pre-upgrade checksum cannot pass. Missing/unknown own sources fail closed.
 
 **The candidate is not a functioning public bootstrap yet:** the new Pages bootstrap URLs and current wizard/repository entries are not published. Installing the candidate ZIP alone does not make those URLs available. Local native tests use an explicitly declared loopback transport substitution, not fabricated production responses. First-party publication integration and fresh-device acceptance remain separate gates.
 
@@ -83,7 +85,7 @@ python3 tools/build_setup_addon.py --output-dir dist
 python3 tools/build_setup_bundle.py --output-dir dist
 ```
 
-Bundle ZIPs are generated artifacts, intentionally not checked into Git. For this unpublished candidate, distribute the chosen profile ZIP directly alongside the wizard ZIP; a source checkout can reproduce it with the command above. Repository catalog/button integration is a separate open publication step.
+Bundle ZIPs are developer artifacts, intentionally not checked into Git and not required in the user flow. Do not replace the native bootstrap with manual companion repository or profile ZIP installation. Publication of the wizard and six bootstrap metadata files remains required before the public user path is available.
 
 Builders have fixed member allowlists and repeatable timestamps. Packages exclude tests, docs, caches, local bindings, backups and credentials. Tests emulate supported Kodi module surfaces, not real rendering or installation. Compare the full suite against an untouched baseline; do not weaken unrelated date-sensitive publication fixtures.
 

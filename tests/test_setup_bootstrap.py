@@ -56,7 +56,7 @@ class BootstrapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             first = build_repository(Path(tmp) / 'one')
             second = build_repository(Path(tmp) / 'two')
-            self.assertEqual(first.name, 'repository.serph91p-1.0.2.zip')
+            self.assertEqual(first.name, 'repository.serph91p-1.0.3.zip')
             self.assertEqual(first.read_bytes(), second.read_bytes())
             with zipfile.ZipFile(first) as archive:
                 self.assertIsNone(archive.testzip())

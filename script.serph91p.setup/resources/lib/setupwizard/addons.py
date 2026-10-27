@@ -34,7 +34,7 @@ MEDIA_REQUIREMENTS = (
     AddonRequirement('script.tubecast', (1, 6, 1), 'TubeCast', '1.6.1+omega.2'),
     AddonRequirement('pvr.iptvsimple', (0,), 'PVR IPTV Simple'),
 )
-REPOSITORY_REQUIREMENT = AddonRequirement('repository.serph91p', (1, 0, 2), 'Serph91P Repository mit Setup-Quellen')
+REPOSITORY_REQUIREMENT = AddonRequirement('repository.serph91p', (1, 0, 3), 'Serph91P Repository mit Setup-Quellen')
 OFFICIAL_REPOSITORY_REQUIREMENT = AddonRequirement('repository.xbmc.org', (0,), 'Offizielles Kodi Repository')
 LIBREELEC_REPOSITORY_REQUIREMENT = AddonRequirement('repository.libreelec.tv', (0,), 'LibreELEC-Systemrepository')
 ORIGINAL_REPOSITORY_REQUIREMENTS = (

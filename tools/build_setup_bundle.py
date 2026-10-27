@@ -38,7 +38,7 @@ def manifest(profile):
     ET.SubElement(metadata, 'description', lang='en_GB').text = (
         'Test candidate. Install explicitly through Kodi Install from ZIP. Kodi installs the selected '
         'skin and fixed media dependencies through its native dependency resolver. Requires Serph91P '
-        'Repository 1.0.2 and the original Jurialmunkey, Emby beta and Kodinerds repositories '
+        'Repository 1.0.3 and the original Jurialmunkey, Emby beta and Kodinerds repositories '
         'already explicitly installed and their own catalogs loaded. Repository addons cannot be '
         'installed as dependencies. No installer code, credentials, '
         'settings changes, layout changes or wizard payload. Not device-validated.')
