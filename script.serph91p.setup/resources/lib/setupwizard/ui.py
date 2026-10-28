@@ -13,6 +13,7 @@ from .origins import (SQLiteOriginReader, ordered_requirements, repository_polic
 from .activation import request_activation
 from .layouts import describe_layout
 from .profiles import PROFILES, requirements_for
+from .adams import NimbusCompatibilityError
 
 TITLE = 'Serph91P Kodi Setup'
 REPOSITORIES = ('Benötigt das vorhandene Serph91P Repository und repository.xbmc.org. '
@@ -78,7 +79,8 @@ def install_with_progress(api, required, dialog, monitor, progress, log, *, appr
                         return False, req.label + ': native Bestandsmigration erforderlich; keine Neuinstallation.'
                     progress.close()
                     if not migration_handler(existing) or not verify_migration(api, existing):
-                        return False, 'Bestandsmigration: ' + req.label + ' noch nicht nativ bestätigt; Wizard nach der Versionsauswahl erneut öffnen.'
+                        return False, 'Bestandsmigration: ' + req.label + ' noch nicht nativ bestätigt; Einrichtung pausiert, erledigter Stand bleibt erhalten.'
+                    progress.create(TITLE, req.label + ': Migration bestätigt; automatisch weiter ...')
                     ready, status = check_requirement(api, req)
             if status.startswith('Herkunft'):
                 return False, req.label + ': ' + status + '. Native Bestandsmigration erforderlich; keine Deinstallation.'
@@ -100,6 +102,67 @@ def install_with_progress(api, required, dialog, monitor, progress, log, *, appr
         return True, ''
     finally:
         progress.close()
+
+
+def install_selected(profile, selected, required, api, dialog, monitor, gui, vfs, log):
+    """Own the whole authorized batch, including native UI handoffs."""
+    from . import state
+    from .catalog import SQLiteCatalogReader
+    from .migration import SQLiteMigrationCandidates, guide_native_migration, await_native_change, inspect_existing
+    session = state.installation_session(profile, selected.key, required, api)
+    summary = ('Komplettsetup für ' + selected.label + ':\n'
+        + ', '.join(item.label for item in required)
+        + '\n\nQuellen: Serph91P/Jurialmunkey, Emby Beta, AdamsBuilds und Kodi. '
+        'Passenden Bestand samt Einstellungen/Logins übernehmen; alte/falsche Quellen geführt migrieren. '
+        'Kataloge aktualisieren und fehlende Addons dieser festen Auswahl inklusive Abhängigkeiten installieren/aktivieren? '
+        'Der Assistent merkt diese genaue Auswahl bis zum Abschluss. Kodi-eigene Dialoge bleiben bedienbar. '
+        'Bei vorhandenen Addons in Meine Addons → Alle das genannte Addon → Versionen → genanntes Repository wählen; '
+        'nicht Installieren oder Deinstallieren. Der Wizard wartet und setzt nach Prüfung selbst fort. '
+        'Zurück aus Meine Addons oder Nein/Abbrechen bei einer Installation pausiert sauber; erledigte Schritte bleiben erhalten.')
+    if session is None and not dialog.yesno(TITLE, summary, 'Abbrechen', 'Alles installieren'):
+        return False, 'Installation nicht freigegeben; keine Änderungen.'
+    state.remember_installation(profile, selected.key, required, api)
+    okay = False
+    try:
+        repo_ok, repo_status = check_requirement(api, REPOSITORY_REQUIREMENT)
+        if not repo_ok and (repo_status in ('nicht installiert', 'API-Fehler') or repo_status.startswith('Herkunft')):
+            return False, 'Setup-Quellen fehlen oder sind nicht bereit: ' + repo_status + '\n' + REPOSITORIES
+        if not repo_ok:
+            dialog.notification(TITLE, 'Serph91P Repository nativ aktualisieren/aktivieren; danach geht es automatisch weiter.', time=10000)
+            api.xbmc.executebuiltin('ActivateWindow(AddonBrowser,addons://user/xbmc.addon.repository,return)')
+            if not await_native_change(lambda: check_requirement(api, REPOSITORY_REQUIREMENT)[0], monitor, gui, api.xbmc):
+                return False, 'Repository-Aktualisierung nicht bestätigt; Einrichtung pausiert.'
+        official = next(r for r in required if r.addon_id == 'repository.xbmc.org')
+        if not check_requirement(api, official)[0]:
+            return False, 'Offizielles repository.xbmc.org muss bereits vorhanden, aktiv und prüfbar sein. Keine Installation über Bootstrap.'
+        needs_install = False
+        for item in required:
+            existing = inspect_existing(api, item)
+            needs_install = needs_install or existing.state == 'missing'
+            if existing.state == 'blocked':
+                return False, item.label + ': ' + existing.detail + '\nKeine Migration auf Verdacht; OS-Paketverwaltung und Addon-Daten bleiben unverändert.'
+        if repository_policy(api).needs_choice and needs_install:
+            if not dialog.yesno(TITLE, 'Kodi Updatequellen sind nicht als „Beliebige Repositories“ zurückgelesen. '
+                    'Diese globale Auswahl ist weniger restriktiv und damit weniger sicher als nur offizielle Quellen. '
+                    'Für Originalquellen und gepflegte Serph91P-Ausnahmen bei Bedarf selbst in System / Addons wählen. '
+                    'Systemeinstellungen jetzt öffnen? Der Wizard wartet und setzt nach Prüfung fort; keine automatische Richtlinienänderung.'):
+                return False, 'Native Quellenwahl abgelehnt; Einrichtung pausiert.'
+            api.xbmc.executebuiltin('ActivateWindow(systemsettings)')
+            if not await_native_change(lambda: not repository_policy(api).needs_choice, monitor, gui, api.xbmc, target_window=10016):
+                return False, 'Native Quellenwahl nicht bestätigt; Einrichtung pausiert.'
+        catalog_reader = SQLiteCatalogReader(vfs.translatePath,
+            version_read_fn=lambda addon_id: (api.details(addon_id) or {}).get('version'))
+        okay, detail = install_with_progress(api, required, dialog, monitor,
+            gui.DialogProgressBG(), log, approved=True, catalog_reader=catalog_reader,
+            migration_handler=lambda existing: guide_native_migration(api, existing, dialog,
+                SQLiteMigrationCandidates(vfs.translatePath, catalog_reader), api.xbmc.executebuiltin,
+                approved=True, monitor=monitor, gui=gui, xbmc=api.xbmc))
+        return okay, detail
+    finally:
+        if okay:
+            state.clear_installation(profile)
+        else:
+            state.remember_installation(profile, selected.key, required, api, active=False)
 
 
 def open_group(argv, xbmc, xbmcgui, xbmcvfs):
@@ -213,7 +276,14 @@ def run(argv=None):
                'Status und Voraussetzungen', 'Kodi-Oberflächeneinstellungen öffnen', 'Zurück', 'Inhalte öffnen',
                'Gewählten Skin jetzt aktivieren', 'Native Repository-Auto-Updates prüfen',
                'Native Menüansicht übernehmen / prüfen']
-    expert, guiding, force = False, False, False
+    try:
+        session = state.installation_session(profile, profile_choice.key, required, api)
+        if all_ready():
+            state.clear_installation(profile)
+    except (OSError, ValueError):
+        dialog.ok(TITLE, 'Installationsstatus nicht sicher lesbar. Keine Änderungen; install-session.json nach Sicherung prüfen.')
+        return
+    expert, guiding, force = False, session == 'active' and not all_ready(), False
     forced_done = set()
     while not monitor.abortRequested():
         status = state.inspect(profile, profile_choice.key, api, update_reader)
@@ -271,6 +341,7 @@ def run(argv=None):
                         return
                     profile_choice = chosen
                     required = ordered_requirements(requirements_for(chosen, REQUIREMENTS, PROFILE_REQUIREMENTS, MEDIA_REQUIREMENTS), api=api)
+                    state.clear_installation(profile)
                     force, guiding = True, True
                     forced_done.clear()
                     status = state.inspect(profile, profile_choice.key, api, update_reader)
@@ -295,63 +366,11 @@ def run(argv=None):
                     continue
         try:
             if choice == 0:
-                summary = ('Komplettsetup für ' + profile_choice.label + ':\n'
-                    + ', '.join(item.label for item in required)
-                    + '\n\nQuellen: Serph91P/Jurialmunkey, Emby Beta, AdamsBuilds und Kodi. '
-                    'Passenden Bestand samt Einstellungen/Logins übernehmen; alte/falsche Quellen geführt migrieren. '
-                    'Kataloge aktualisieren und fehlende Addons dieser festen Auswahl inklusive Abhängigkeiten installieren/aktivieren? '
-                    'Der Assistent fragt nur einmal. Kodi-eigene Dialoge bleiben bedienbar.')
-                if not dialog.yesno(TITLE, summary, 'Abbrechen', 'Alles installieren'):
-                    if guiding:
-                        return
-                    continue
-                repo_ok, repo_status = check_requirement(api, REPOSITORY_REQUIREMENT)
-                if not repo_ok and (repo_status in ('nicht installiert', 'API-Fehler') or repo_status.startswith('Herkunft')):
-                    dialog.ok(TITLE, 'Setup-Quellen fehlen oder sind nicht bereit: ' + repo_status + '\n' + REPOSITORIES)
-                    if guiding:
-                        return
-                    continue
-                if not repo_ok:
-                    if dialog.yesno(TITLE, 'Das vorhandene Serph91P Repository muss zuerst nativ auf 1.0.3 oder neuer aktualisiert/aktiviert werden. '
-                            'Repository-Liste öffnen, Serph91P wählen und native Aktualisierung bestätigen? Danach den Wizard erneut öffnen; '
-                            'Jurialmunkey/Emby/Kodinerds werden vom Wizard selbst hinzugefügt. Keine manuelle ZIP-Suche.'):
-                        xbmc.executebuiltin('ActivateWindow(AddonBrowser,addons://user/xbmc.addon.repository,return)')
-                    return
-                official = next(r for r in required if r.addon_id == 'repository.xbmc.org')
-                if not check_requirement(api, official)[0]:
-                    dialog.ok(TITLE, 'Offizielles repository.xbmc.org muss bereits vorhanden, aktiv und prüfbar sein. Keine Installation über Bootstrap.')
-                    return
-                needs_install = False
-                for item in required:
-                    from .migration import inspect_existing
-                    existing = inspect_existing(api, item)
-                    needs_install = needs_install or existing.state == 'missing'
-                    if existing.state == 'blocked':
-                        dialog.ok(TITLE, item.label + ': ' + existing.detail + '\n'
-                            'Keine Migration auf Verdacht; OS-Paketverwaltung, PVR-Dateien und Addon-Daten bleiben unverändert.')
-                        return
-                policy = repository_policy(api)
-                if policy.needs_choice and needs_install:
-                    if dialog.yesno(TITLE, 'Kodi Updatequellen sind nicht als „Beliebige Repositories“ zurückgelesen. '
-                            'Diese globale Auswahl ist weniger restriktiv und damit weniger sicher als nur offizielle Quellen. '
-                            'Für Originalquellen und gepflegte Serph91P-Ausnahmen bei Bedarf selbst in System / Addons wählen. '
-                            'Systemeinstellungen jetzt öffnen? Danach den Assistenten erneut öffnen; keine automatische Richtlinienänderung.'):
-                        xbmc.executebuiltin('ActivateWindow(systemsettings)')
-                    return
-                from .catalog import SQLiteCatalogReader
-                from .migration import SQLiteMigrationCandidates, guide_native_migration
-                catalog_reader = SQLiteCatalogReader(xbmcvfs.translatePath,
-                    version_read_fn=lambda addon_id: (api.details(addon_id) or {}).get('version'))
-                okay, detail = install_with_progress(api, required, dialog, monitor,
-                    xbmcgui.DialogProgressBG(), log, approved=True, catalog_reader=catalog_reader,
-                    migration_handler=lambda existing: guide_native_migration(api, existing, dialog,
-                        SQLiteMigrationCandidates(xbmcvfs.translatePath, catalog_reader), xbmc.executebuiltin))
+                okay, detail = install_selected(profile, profile_choice, required, api, dialog, monitor, xbmcgui, xbmcvfs, log)
                 if monitor.abortRequested():
                     return
-                if detail.startswith('Bestandsmigration:'):
-                    return  # Native list already open or its explicit prompt declined.
                 dialog.ok(TITLE, ('Alle benötigten Addons sind installiert und aktiv. Layout und Anmeldungen bleiben getrennte Schritte.' if okay else
-                    'Einrichtung unvollständig. ' + detail + '\n' + REPOSITORIES))
+                    'Einrichtung pausiert. ' + detail + '\nErledigter Stand wird beim Fortsetzen live erkannt.'))
                 if guiding and not okay:
                     return
                 forced_done.add('addons')
@@ -359,13 +378,13 @@ def run(argv=None):
                 if not all_ready():
                     dialog.ok(TITLE, 'Zuerst alle benötigten Addons installieren/aktivieren. Es wurde kein Layout geschrieben.')
                     continue
+                if profile_choice.key in ('rotary','nimbus'):
+                    from .adams import validate_runtime
+                    validate_runtime(api,profile_choice.key,xbmcvfs.translatePath)
                 if not inactive():
                     if guiding:
                         return
                     continue
-                if profile_choice.key in ('rotary','nimbus'):
-                    from .adams import validate_runtime
-                    validate_runtime(api,profile_choice.key,xbmcvfs.translatePath)
                 if not dialog.yesno(TITLE, status.layout_detail + '\n' + status.regional_detail + '\n' + describe_layout(profile_choice.key) +
                     '\nDas Layout lässt sich auch vor der Emby-Anmeldung anwenden. Fehlende persönliche Bibliotheken bleiben als Emby einrichten markiert und können später verknüpft werden. '
                     'Portable Skin-Einstellungen sowie Sprache/Region der Vorlage (English, Central Europe) werden übernommen und gesichert. '
@@ -516,6 +535,11 @@ def run(argv=None):
                     dialog.ok(TITLE, 'Im folgenden Kodi-Bestätigungsdialog selbst bestätigen. Aktivierung noch nicht verifiziert; '
                               'beim nächsten Öffnen wird der tatsächlich aktive Skin zurückgelesen.')
                     request_activation(profile, profile_choice.key, api, approved=True)
+                return
+        except NimbusCompatibilityError as exc:
+            log('Nimbus-Kompatibilität noch nicht freigegeben')
+            dialog.ok(TITLE, str(exc))
+            if guiding:
                 return
         except Exception as exc:
             log('Vorgang fehlgeschlagen: ' + type(exc).__name__)

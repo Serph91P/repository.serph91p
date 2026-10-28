@@ -34,6 +34,7 @@ class Surface:
         self.profile_index = profile_index
         self.commands, self.dialogs, self.settings, self.log = [], [], [], []
         self.progress_events = []
+        self.native_window = 10000
         from resources.lib.setupwizard.regional import reference
         self.locale = reference()
         self.touchmode = skin == 'skin.estuary.modv2'  # Model an already configured active touch profile.
@@ -75,6 +76,7 @@ class Surface:
             def yesno(self, *args): return True
             def ok(self, *args): surface.dialogs.append(args)
             def textviewer(self, *args): surface.dialogs.append(args)
+            def notification(self, *args, **kwargs): surface.dialogs.append(args)
         class DialogProgressBG:
             def create(self, heading, message=""): surface.progress_events.append(("create", heading, message))
             def update(self, percent=0, heading="", message=""): surface.progress_events.append(("update", percent, heading, message))
@@ -88,7 +90,8 @@ class Surface:
                 getCondVisibility=self.condition,
                 LOGINFO=1, log=lambda message, level: self.log.append(message)),
             'xbmcaddon': types.SimpleNamespace(Addon=Addon),
-            'xbmcgui': types.SimpleNamespace(Dialog=Dialog, DialogProgressBG=DialogProgressBG),
+            'xbmcgui': types.SimpleNamespace(Dialog=Dialog, DialogProgressBG=DialogProgressBG,
+                getCurrentWindowId=lambda:surface.native_window, getCurrentWindowDialogId=lambda:9999),
             'xbmcvfs': types.SimpleNamespace(translatePath=self.translate),
         }
     def __del__(self):
@@ -154,6 +157,7 @@ class Surface:
         if expression == 'System.Platform.Android': return True
         if expression == 'System.Platform.Linux': return False
         if expression == 'Window.IsVisible(10100)': return getattr(self, 'keep_dialog', False)
+        if expression in ('Window.IsVisible(10138)','Window.IsVisible(10151)','Window.IsVisible(10160)'): return False
         if expression != 'Skin.HasSetting(touchmode)':
             raise AssertionError(expression)
         return self.touchmode
@@ -175,6 +179,10 @@ class Surface:
             self.native_skin_path(self.skin,force=True)
         elif command == 'Addon.OpenSettings(plugin.service.emby-next-gen)':
             self.settings.append('plugin.service.emby-next-gen')
+        elif command.startswith('ActivateWindow(AddonBrowser'):
+            self.native_window = 10040
+        elif command == 'ActivateWindow(systemsettings)':
+            self.native_window = 10016
         elif not command.startswith('ActivateWindow('):
             raise AssertionError('Unsupported builtin: ' + command)
     def run(self, argv=()):
@@ -217,7 +225,7 @@ class WizardTests(unittest.TestCase):
             s.run()
             self.assertEqual(s.progress_events[-1], ('close',))
             self.assertFalse(any(e[0] == 'update' and e[1] == 100 for e in s.progress_events))
-            self.assertTrue(any('Einrichtung unvollständig. Jurialmunkey Repository' in str(x) for x in s.dialogs))
+            self.assertTrue(any('Einrichtung pausiert. Jurialmunkey Repository' in str(x) for x in s.dialogs))
             self.assertFalse(any('Alle benötigten Addons' in str(x) for x in s.dialogs))
 
     def test_progress_exception_always_closes(self):

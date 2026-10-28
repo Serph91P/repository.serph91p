@@ -1,6 +1,6 @@
 # Serph91P Kodi Setup Wizard
 
-**0.4.3 for Kodi 21/Omega. Native fixture tests are not physical-device or playback acceptance.**
+**0.4.4 for Kodi 21/Omega. Native fixture tests are not physical-device or playback acceptance.**
 
 ## One repository, four profiles
 
@@ -11,7 +11,7 @@ The public path requires a successful Pages publication of the paired repository
 - **Arctic Fuse 3:** native Skin Variables hubs, widgets and submenus.
 - **Amber:** private Skin Shortcuts menu, native shelves and submenus.
 - **Rotary 0.0.1:** touch-first grid with six native home shortcuts. These open the same content lists; Rotary has no equivalent custom widgets or skin-native submenus. Its young version is disclosed before selection.
-- **Nimbus Plus 0.2.07 / helper 0.0.98:** native menus, widgets, submenus and touch mode. The version-bound adapter stages the helper's own `cpath_cache.db` userdata contract, preserving unrelated rows, plus skin settings and a dedicated touch keymap. Explicit layout approval and backups are required. The original helper's narrow generators, not wizard-written skin XML, generate the skin-owned XML. Those generated files are not a file-backup policy; after restoring userdata, use the native helper to rebuild its output. Unknown helper versions or schemas stop writes. Nimbus keymap changes require the default Kodi profile; no cross-profile write is attempted.
+- **Nimbus Plus 0.2.07 / helper 0.0.98 and current 0.2.08 / helper 0.0.99:** native menus, widgets, submenus and touch mode. The version-bound adapter stages the helper's own `cpath_cache.db` userdata contract, preserving unrelated rows, plus skin settings and a dedicated touch keymap. Explicit layout approval and backups are required. The original helper's narrow generators, not wizard-written skin XML, generate the skin-owned XML. Helper 0.0.99 adds its own widget-bridge prefix only to generated plugin paths; stored paths and the user's bridge preference stay unchanged. Those generated files are not a file-backup policy; after restoring userdata, use the native helper to rebuild its output. Unknown helper versions or schemas stop writes. Helper/profile incompatibility is reported before asking to leave the active skin, without suggesting userdata corruption or a restore failure. Nimbus keymap changes require the default Kodi profile; no cross-profile write is attempted.
 
 Estuary MOD V2 is a retired new-setup choice. Existing installations/settings and legacy backups remain intact. Opening a saved retired profile offers an explicit new choice; cancelling does not migrate its layout or erase it.
 
@@ -19,9 +19,11 @@ Every profile requests Emby Next Gen, Twitch, YouTube, Gronkh.tv, TubeCast and I
 
 ## Resume, origins and migration
 
-The saved state contains only schema/profile, never credentials or trusted completion flags. Every opening rechecks live installation, enabled state, origin, indexed repository version, layout and native state. Correct existing add-ons are adopted, not reinstalled. Unreadable/ambiguous origins fail closed; a successfully read empty ZIP origin is a distinct, known unassigned state.
+The saved preference contains only schema/profile, never credentials or trusted completion flags. A separate bounded `install-session.json` remembers consent only to the exact allowlisted profile, versions and expected repositories of an unfinished batch. It contains a public-scope digest and active/paused intent, not installed/ready flags. Changed scope/profile needs new consent; explicit Setup Again discards old consent; completion clears it. An interrupted active run resumes directly, while a deliberate pause/refusal requires selecting Continue, not repeating the whole batch consent. Every opening rechecks live installation, enabled state, origin, indexed repository version, layout and native state. Correct existing add-ons are adopted, not reinstalled. Unreadable/ambiguous origins fail closed; a successfully read empty ZIP origin is a distinct, known unassigned state.
 
-Known wrong-source, ZIP or older same-ID installs enter a user-mediated migration. The wizard checks that the target repository offers a version at least as new as the installed/minimum version, then opens **My add-ons → All**. Select the named add-on → **Versions** → the named repository/version, not the package cache. Reopen the wizard to verify enabled state, version and origin. Opening that UI is never recorded as success.
+Known wrong-source, ZIP or older same-ID installs enter a user-mediated migration. The wizard checks that the target repository offers a version at least as new as the installed/minimum version, then opens **My add-ons → All**. Select the named add-on → **Versions** → the named repository/version, not the package cache. The wizard stays alive and advances automatically after native enabled/version/origin readback and completion of native modal/background installation dialogs; it does not require reopening or a new wizard confirmation for each add-on. Back out of My add-ons to pause. Opening/closing a dialog is never success. Native handoffs have a bounded wait and honour Kodi shutdown; a closed native operation with no verified state pauses rather than being silently retried.
+
+Missing-add-on installation now uses Omega's synchronous `InstallAddon(...), wait=True` → `InstallModal` path, including the native user decision and modal install job. If Kodi returns with the add-on still missing/disabled (No, Cancel or failure), the batch pauses immediately instead of starting a 90-second install/activation wait. Dependencies and security prompts remain native and are never accepted automatically.
 
 Use **Versions**, not the generic repository **Install** button: Omega's `CGUIDialogAddonInfo::OnInstall` can uninstall a foreign-origin add-on. `OnSelectVersion` updates in place. The wizard performs no silent uninstall, InstallAddon-on-existing, origin SQL write or pin removal. It does not change existing add-on account data. Add-on-owned migrations or expired sessions can still require login; there is no blanket guarantee for arbitrary add-on versions or tokens.
 
@@ -38,7 +40,7 @@ All adapters use `navigation.py`:
 - **YouTube:** Recommendations, My Subscriptions, Search.
 - **Live TV:** Sender and Programm/EPG, usable after local PVR/channel configuration.
 
-Presentation differs by skin. Missing Series/Twitch-VOD bindings stay null and show **Emby einrichten**, never an all-series fallback or copied server ID. Layout can be applied before login. After Emby login/sync, select separate target-local Series and Twitch-VOD libraries. Accounts, IPTV/EPG, API/OAuth and personal library choices remain local. The private login-transfer package is separate and never included here.
+The goal is a similar content/navigation structure, not a visual clone: each skin keeps its own native presentation and touch interaction. Rotary opens the shared content lists from its native shortcuts; Nimbus uses its own widgets and touch submenus. Kodi-created empty unused Rotary shortcut fields are harmless and do not cause repeated layout-drift prompts; stale nonempty shortcuts still do. Missing Series/Twitch-VOD bindings stay null and show **Emby einrichten**, never an all-series fallback or copied server ID. Layout can be applied before login. After Emby login/sync, select separate target-local Series and Twitch-VOD libraries. Accounts, IPTV/EPG, API/OAuth and personal library choices remain local. The private login-transfer package is separate and never included here.
 
 ## Apply, native readiness and restore
 
