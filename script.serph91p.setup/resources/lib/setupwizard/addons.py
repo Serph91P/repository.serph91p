@@ -103,7 +103,10 @@ class KodiAddonAPI:
 
     def install(self, addon_id):
         self._allowed(addon_id)
-        self.xbmc.executebuiltin('InstallAddon({})'.format(addon_id))
+        # Omega InstallAddon calls InstallModal (including native No/Cancel).
+        # Wait for that operation, not a fire-and-forget request followed by
+        # a timer which cannot distinguish refusal from an installation.
+        self.xbmc.executebuiltin('InstallAddon({})'.format(addon_id), wait=True)
 
     def enable(self, addon_id):
         self._allowed(addon_id)
@@ -223,6 +226,11 @@ def ensure_requirement(api, requirement, confirm, wait_for_install, log):
             api.enable(requirement.addon_id)
         else:
             api.install(requirement.addon_id)
+        details = api.details(requirement.addon_id)
+        if details is None or not details.get('enabled'):
+            log(requirement.label + ': nativer Vorgang beendet, aber nicht installiert/aktiv '
+                '(abgelehnt, abgebrochen oder fehlgeschlagen); kein weiteres Warten')
+            return False
     except Exception:
         log(requirement.label + ': Anfrage fehlgeschlagen')
         return False

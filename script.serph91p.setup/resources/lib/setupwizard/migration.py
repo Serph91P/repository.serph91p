@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import sqlite3
 import stat
+import time
 from .addons import AddonRequirement, REQUIREMENTS_BY_ID, version_at_least, version_tuple
 from .config import _no_symlink_ancestors
 from .origins import ORIGINS
@@ -125,12 +126,60 @@ class SQLiteMigrationCandidates:
                 connection.close()
 
 
-def guide_native_migration(api, before, dialog, candidate_reader, open_window):
+def await_native_change(check, monitor, gui, xbmc, *, target_window=10040,
+                        timeout=900, clock=time.monotonic):
+    """Observe native UI and real state; no clicks, retries or modal overlays.
+
+    Omega uses 9999 for no modal dialog. Background installer/busy dialogs
+    can outlive the information dialog and must settle before continuing.
+    Leaving the native page is a pause, not proof of success or refusal.
+    """
+    deadline, opened = clock() + timeout, clock()
+    seen = False
+    seen_dialog = False
+    decision_seen = False
+    quiet_since = None
+    while not monitor.abortRequested():
+        now = clock()
+        window = gui.getCurrentWindowId()
+        modal = gui.getCurrentWindowDialogId()
+        if type(window) is not int or type(modal) is not int:
+            return False
+        busy = modal != 9999 or any(xbmc.getCondVisibility('Window.IsVisible({})'.format(i))
+                                    for i in (10138, 10151, 10160))
+        seen = seen or window == target_window
+        seen_dialog = seen_dialog or busy
+        # A catalog refresh/background handle is not a user's decision dialog.
+        # It can finish while the user is still browsing for the named addon.
+        decision_seen = decision_seen or (seen and modal in (10100, 10146, 12000, 12002))
+        if not busy:
+            if check():
+                return True
+            if seen and target_window is not None and window != target_window:
+                return False
+            # After a native dialog returns without state change or an install
+            # progress handle, pause rather than wait forever after No/Cancel.
+            if decision_seen:
+                if quiet_since is None:
+                    quiet_since = now
+                if now - quiet_since >= 2:
+                    return False
+        else:
+            quiet_since = None
+        if now >= deadline or (not seen and not seen_dialog and now - opened >= 10):
+            return False
+        if monitor.waitForAbort(.2):
+            return False
+    return False
+
+
+def guide_native_migration(api, before, dialog, candidate_reader, open_window, *,
+                           approved=False, monitor=None, gui=None, xbmc=None):
     """Open only My add-ons; Versions is the safe native source-switch path.
 
     Omega's repository-list Install button can silently uninstall a foreign
     origin. Never drive that button, synthesize clicks or call InstallAddon
-    for existing addons. Opening the native UI never returns migration success.
+    for existing addons. Only native state readback can return success.
     """
     current = inspect_existing(api, before.requirement)
     if current.state == 'adopt':
@@ -162,8 +211,17 @@ def guide_native_migration(api, before, dialog, candidate_reader, open_window):
         'Auto-update nativ vorübergehend deaktivieren und die bisherige Wahl danach selbst wiederherstellen. '
         'Der Wizard ändert keine Updatesperren oder Sicherheitsrichtlinie und löscht keine Addon-Daten oder Logins. '
         'Addon-eigene Änderungen/abgelaufene Sitzungen können erneutes Anmelden verlangen.\n\n'
-        'Nach der nativen Auswahl den Wizard erneut öffnen: Quelle, Version und Aktivierung werden neu geprüft; '
-        'das Öffnen dieser Liste ist noch keine bestätigte Migration. Jetzt öffnen?')
-    if dialog.yesno(title, message):
-        open_window('ActivateWindow(AddonBrowser,addons://user/all,return)')
-    return False
+        'Der Wizard bleibt aktiv und setzt nach bestätigter Quelle, Version und Aktivierung automatisch fort. '
+        'Zurück aus Meine Addons pausiert die Einrichtung; ihr Stand bleibt erhalten. '
+        'Das Öffnen dieser Liste ist noch keine bestätigte Migration. Jetzt öffnen?')
+    if approved is not True and not dialog.yesno(title, message):
+        return False
+    if approved is True:
+        dialog.notification(title, current.requirement.label + ': Versionen → '
+            + names.get(current.repository, current.repository) + '. Der Wizard wartet und setzt selbst fort.', time=10000)
+    open_window('ActivateWindow(AddonBrowser,addons://user/all,return)')
+    if monitor is None:
+        return verify_migration(api, before)
+    if gui is None or xbmc is None:
+        return False
+    return await_native_change(lambda: verify_migration(api, before), monitor, gui, xbmc)

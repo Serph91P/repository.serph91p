@@ -4,7 +4,9 @@ No credentials, account flags or trusted completion booleans are persisted.
 Unknown/corrupt records fail closed, never becoming a new-install instruction.
 """
 from dataclasses import dataclass
+import hashlib
 import json
+import re
 from xml.etree import ElementTree as ET
 from .config import _profile, _no_symlink_ancestors, _atomic, _target, MAX_FILE_BYTES
 from .profiles import PROFILES, requirements_for
@@ -16,6 +18,68 @@ from .common_layouts import common_payloads
 from . import regional
 
 PATH = 'addon_data/script.serph91p.setup/setup-state.json'
+INSTALL_PATH = 'addon_data/script.serph91p.setup/install-session.json'
+
+
+def _install_path(profile):
+    path = _profile(profile) / INSTALL_PATH
+    _no_symlink_ancestors(path)
+    if path.exists() and (not path.is_file() or path.stat().st_size > 4096):
+        raise ValueError('invalid installation session file')
+    return path
+
+
+def _install_scope(profile_id, required, api):
+    """Consent to public allowlisted work, never evidence that work is done."""
+    from .addons import REQUIREMENTS_BY_ID
+    from .origins import ORIGINS
+    from .pvr import distribution
+    if profile_id not in tuple(p.key for p in PROFILES if not p.retired):
+        raise ValueError('unknown installation profile')
+    rows = []
+    for req in required:
+        if req != REQUIREMENTS_BY_ID.get(req.addon_id):
+            raise ValueError('installation requirement not allowlisted')
+        repository = distribution(api).repository if req.addon_id == 'pvr.iptvsimple' else ORIGINS[req.addon_id]
+        rows.append((req.addon_id, req.min_version, req.min_version_string, repository))
+    if not rows or len(rows) > 128 or len({row[0] for row in rows}) != len(rows):
+        raise ValueError('invalid installation scope')
+    public_scope = {'schema': 1, 'profile': profile_id, 'kodi': 21, 'requirements': rows}
+    return hashlib.sha256(json.dumps(public_scope, sort_keys=True).encode()).hexdigest()
+
+
+def installation_session(profile, profile_id, required, api):
+    """Return active/paused only for the exact previously approved batch."""
+    path = _install_path(profile)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except (ValueError, UnicodeError) as exc:
+        raise ValueError('invalid installation session JSON') from exc
+    if (not isinstance(data, dict) or set(data) != {'schema', 'profile', 'scope', 'active'}
+            or type(data['schema']) is not int or data['schema'] != 1
+            or data['profile'] not in tuple(p.key for p in PROFILES if not p.retired)
+            or not isinstance(data['scope'], str) or not re.fullmatch(r'[a-f0-9]{64}', data['scope'])
+            or type(data['active']) is not bool):
+        raise ValueError('unknown installation session schema')
+    if data['profile'] != profile_id or data['scope'] != _install_scope(profile_id, required, api):
+        return None
+    return 'active' if data['active'] else 'paused'
+
+
+def remember_installation(profile, profile_id, required, api, *, active=True):
+    if type(active) is not bool:
+        raise ValueError('invalid installation activity')
+    data = {'schema': 1, 'profile': profile_id,
+            'scope': _install_scope(profile_id, required, api), 'active': active}
+    _atomic(_install_path(profile), (json.dumps(data, sort_keys=True) + '\n').encode())
+
+
+def clear_installation(profile):
+    path = _install_path(profile)
+    if path.exists():
+        path.unlink()  # Only our bounded regular consent record, never addon data.
 
 SKIN_SETTINGS = frozenset(('addon_data/skin.arctic.fuse.3/settings.xml',
                            'addon_data/skin.estuary.modv2/settings.xml',
