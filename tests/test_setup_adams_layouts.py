@@ -21,6 +21,24 @@ class AdamsLayoutTests(unittest.TestCase):
             self.assertFalse(any('widget' in s.lower() for s in settings))
             backup=root/'setupwizard-backups/new';backup.parent.mkdir();apply_common_layout(root,backup,'rotary',empty_bindings());rollback(root,backup)
             self.assertEqual(p.read_bytes(),before)
+    def test_rotary_native_empty_unused_slot_is_not_endless_layout_drift(self):
+        from resources.lib.setupwizard.state import _layout_matches
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);rel='addon_data/skin.rotary/settings.xml';target=root/rel
+            target.parent.mkdir(parents=True)
+            target.write_bytes(common_payloads(root,'rotary',empty_bindings())[rel])
+            tree=ET.fromstring(target.read_bytes())
+            tail=ET.SubElement(tree,'setting',{'id':'rotary.home.7.action','type':'string'})
+            target.write_bytes(ET.tostring(tree))
+            # Kodi persists a missing Skin.String lookup as an empty setting.
+            self.assertTrue(_layout_matches(rel,target,common_payloads(root,'rotary',empty_bindings())[rel]))
+            tail.text='UnexpectedSeventhAction'
+            target.write_bytes(ET.tostring(tree))
+            self.assertFalse(_layout_matches(rel,target,common_payloads(root,'rotary',empty_bindings())[rel]))
+            tail.text=None;tail.set('type','bool')
+            target.write_bytes(ET.tostring(tree))
+            self.assertFalse(_layout_matches(rel,target,common_payloads(root,'rotary',empty_bindings())[rel]))
+
     def test_nimbus_existing_rows_and_settings_are_preserved_and_snapshot_is_reproducible(self):
         from resources.lib.setupwizard.adams import DATABASE
         with tempfile.TemporaryDirectory() as tmp:

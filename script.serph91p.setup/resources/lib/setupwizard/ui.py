@@ -13,6 +13,7 @@ from .origins import (SQLiteOriginReader, ordered_requirements, repository_polic
 from .activation import request_activation
 from .layouts import describe_layout
 from .profiles import PROFILES, requirements_for
+from .adams import NimbusCompatibilityError
 
 TITLE = 'Serph91P Kodi Setup'
 REPOSITORIES = ('Benötigt das vorhandene Serph91P Repository und repository.xbmc.org. '
@@ -377,13 +378,13 @@ def run(argv=None):
                 if not all_ready():
                     dialog.ok(TITLE, 'Zuerst alle benötigten Addons installieren/aktivieren. Es wurde kein Layout geschrieben.')
                     continue
+                if profile_choice.key in ('rotary','nimbus'):
+                    from .adams import validate_runtime
+                    validate_runtime(api,profile_choice.key,xbmcvfs.translatePath)
                 if not inactive():
                     if guiding:
                         return
                     continue
-                if profile_choice.key in ('rotary','nimbus'):
-                    from .adams import validate_runtime
-                    validate_runtime(api,profile_choice.key,xbmcvfs.translatePath)
                 if not dialog.yesno(TITLE, status.layout_detail + '\n' + status.regional_detail + '\n' + describe_layout(profile_choice.key) +
                     '\nDas Layout lässt sich auch vor der Emby-Anmeldung anwenden. Fehlende persönliche Bibliotheken bleiben als Emby einrichten markiert und können später verknüpft werden. '
                     'Portable Skin-Einstellungen sowie Sprache/Region der Vorlage (English, Central Europe) werden übernommen und gesichert. '
@@ -534,6 +535,11 @@ def run(argv=None):
                     dialog.ok(TITLE, 'Im folgenden Kodi-Bestätigungsdialog selbst bestätigen. Aktivierung noch nicht verifiziert; '
                               'beim nächsten Öffnen wird der tatsächlich aktive Skin zurückgelesen.')
                     request_activation(profile, profile_choice.key, api, approved=True)
+                return
+        except NimbusCompatibilityError as exc:
+            log('Nimbus-Kompatibilität noch nicht freigegeben')
+            dialog.ok(TITLE, str(exc))
+            if guiding:
                 return
         except Exception as exc:
             log('Vorgang fehlgeschlagen: ' + type(exc).__name__)

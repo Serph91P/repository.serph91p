@@ -1,7 +1,7 @@
 """Adams userdata adapters; native skins/helper render, never our skin XML.
 
 Rotary 0.0.1: six native shortcuts, shared wizard list submenus, no widgets.
-Nimbus Plus 0.2.07/helper 0.0.98: versioned custom_paths/menu_order contract.
+Nimbus Plus 0.2.07–0.2.08/helper 0.0.98–0.0.99: verified userdata contract.
 Its dialog routes have no bulk-import API. Build a backup-able userdata snapshot
 in memory, preserve unrelated rows, then use only its narrow native generators.
 Never touch Kodi's addon DB, favourites, other keymaps or installed skin XML.
@@ -16,6 +16,9 @@ from .config import _target, _no_symlink_ancestors, _merge_skin_settings, MAX_FI
 from .navigation import groups, action, group_action
 
 SKINS = {'rotary':'skin.rotary','nimbus':'skin.nimbus'}
+# Both original helper schemas and native generator APIs were checked.
+# 99 adds its widget bridge only to generated output, never stored cpath rows.
+NIMBUS_HELPERS = ('0.0.98','0.0.99')
 DATABASE = 'addon_data/script.nimbus.helper/cpath_cache.db'
 KEYMAP = 'keymaps/nimbus_touch_submenu.xml'
 PREFIXES = ('movie','tvshow','custom1','custom2','custom3','custom4')
@@ -74,10 +77,13 @@ def _settings(profile,key,bindings):
             parts=identifier.split('.')
             rotary=(key=='rotary' and len(parts)==4 and parts[:2]==['rotary','home']
                     and parts[2].isdigit() and int(parts[2])>6 and parts[3] in ('label','icon','action'))
+            # Kodi materializes absent Skin.String lookups as empty strings.
+            # Preserve those inert saved slots, but remove stale real shortcuts.
+            rotary_empty=rotary and node.get('type')=='string' and not (node.text or '')
             submenu=(key=='nimbus' and len(parts)==4 and parts[0]=='submenu' and parts[1] in MENU_IDS[:5]
                      and parts[2].isdigit() and parts[3] in ('label','action','window','target'))
             submenu_flag=key=='nimbus' and identifier in tuple('submenuenabled.'+menu for menu in MENU_IDS[:5])
-            if rotary or submenu or submenu_flag:root.remove(node)
+            if (rotary and not rotary_empty) or submenu or submenu_flag:root.remove(node)
         data=ET.tostring(root,encoding='utf-8')
     values,types=skin_settings(key,bindings)
     return _merge_skin_settings(data,values,types)
@@ -144,12 +150,21 @@ def payloads(profile,key,bindings):
     return result
 
 
+class NimbusCompatibilityError(ValueError):
+    """A known compatibility limit, not a userdata or restore failure."""
+
+
 def validate_runtime(api,key,translate_path):
     if key=='nimbus':
-        if (api.details('script.nimbus.helper') or {}).get('version')!='0.0.98':
-            raise ValueError('Nimbus userdata adapter verified only for helper 0.0.98; no changes')
+        version=(api.details('script.nimbus.helper') or {}).get('version')
+        if version not in NIMBUS_HELPERS:
+            shown=version if isinstance(version,str) and len(version)<=32 else 'unbekannt'
+            raise NimbusCompatibilityError('Nimbus-Layout vorerst nicht anwendbar: Helper-Version '+shown+
+                ' ist mit diesem Wizard noch nicht geprüft. Unterstützt: '+', '.join(NIMBUS_HELPERS)+'. '
+                'Dafür ist eine passende Wizard-Version erforderlich, kein Zurücksetzen der Userdata oder Helper-Downgrade.')
         if Path(translate_path('special://userdata')).resolve()!=Path(translate_path('special://profile')).resolve():
-            raise ValueError('Nimbus touch keymap requires the default Kodi profile; no cross-profile changes')
+            raise NimbusCompatibilityError('Nimbus-Touchmodus benötigt das Kodi-Standardprofil. '
+                'Keine profilübergreifende Keymap-Änderung; das Layout wurde hier nicht angewendet.')
 
 
 def refresh_native(api,key,profile,bindings):
