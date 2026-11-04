@@ -141,6 +141,23 @@ ADDONS = [
         "evidence_artifact_name": "validation-evidence",
         "runtime_entries": ("addon.xml", "changelog.txt", "LICENSES/", "resources/"),
     },
+    {
+        "owner": "Serph91P",
+        "repo": "skin.arctic.fuse.3",
+        "addon_id": "skin.arctic.fuse.3",
+        "branch": "omega",
+        "publication_enabled": True,
+        "publication_branch": "omega",
+        "validation_workflow": "Add-on Validations",
+        "validation_workflow_path": ".github/workflows/addon-validations.yml",
+        "validation_workflow_id": 406868734,
+        "package_artifact_name": "addon-package",
+        "evidence_artifact_name": "validation-evidence",
+        # Remove immediately after the first approved, validated publication.
+        "bootstrap_pending": True,
+        "runtime_entries": ("addon.xml", "LICENSE.txt", "1080i/", "colors/", "extras/",
+                            "fanart.jpg", "fonts/", "icon.png", "language/", "media/", "shortcuts/"),
+    },
 ]
 
 ARTIFACT_RETENTION_DAYS = 30

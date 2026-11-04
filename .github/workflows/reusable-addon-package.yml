@@ -159,7 +159,11 @@ jobs:
           with zipfile.ZipFile(package, "r") as archive:
               archive.extractall(destination)
           PY
-          kodi-addon-checker "checker/extracted/${ADDON_ID}" --branch=omega
+          if [ "${ADDON_ID}" = "skin.arctic.fuse.3" ]; then
+            python tooling/addon-publication/check_arctic_package.py "checker/extracted/${ADDON_ID}"
+          else
+            kodi-addon-checker "checker/extracted/${ADDON_ID}" --branch=omega
+          fi
 
       - name: Upload exact add-on package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
