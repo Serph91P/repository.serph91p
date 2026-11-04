@@ -16,6 +16,14 @@ Approval/activation order: target policy merge, existing dispatch credential
 provisioning for the new source (no new PAT), skin omega merge/validation and
 notification, Pages deployment, public feed/ZIP/checksum verification. YouTube
 Goto fix is its own versioned source change in plugin.video.youtube PR9.
+The skin-specific native Kodi checker supplements official dependency metadata
+with the original jurialmunkey omega feed (it does not skip dependency checks).
+Only the two existing upstream image dimension findings are exempted, bound to
+the exact original icon/fanart SHA-256. All other errors stay fatal. Artwork is
+not resized; a broken upstream Polish PO entry is corrected in the skin.
+Official checker CLI/API source: xbmc/addon-check at
+67be5c1eca23e01402a447f995e2216bd83202f3.
+
 Original leaf repositories/feeds and the setup wizard's separate original-skin
 contract are unchanged; choose repository.serph91p as the maintained skin source.
 
