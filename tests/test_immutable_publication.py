@@ -3277,6 +3277,7 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
             "Serph91P/plugin.video.plexkodiconnect.tvshows",
             "Serph91P/script.tubecast",
             "Serph91P/plugin.video.youtube",
+            "Serph91P/skin.arctic.fuse.3",
         }
         self.assertEqual(
             {f"{config['owner']}/{config['repo']}" for config in builder.ADDONS},
@@ -3292,6 +3293,7 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
                     {
                         "plugin.video.gronkhtv": "main",
                         "plugin.video.youtube": "master",
+                        "skin.arctic.fuse.3": "omega",
                     }.get(config["addon_id"], "develop")
                 )
                 self.assertEqual(config["publication_branch"], expected_branch)
@@ -3312,7 +3314,10 @@ class TestImmutablePublicationWorkflows(unittest.TestCase):
             ("addon.xml", "changelog.txt", "LICENSES/", "resources/"),
         )
         for config in builder.ADDONS:
-            self.assertNotIn("bootstrap_pending", config)
+            if config["addon_id"] == "skin.arctic.fuse.3":
+                self.assertIs(config["bootstrap_pending"], True)
+            else:
+                self.assertNotIn("bootstrap_pending", config)
 
 
 if __name__ == "__main__":

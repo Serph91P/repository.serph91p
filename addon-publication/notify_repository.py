@@ -21,6 +21,7 @@ GH_API = "https://api.github.com"
 SOURCE_BRANCHES = {
     "Serph91P/plugin.video.gronkhtv": "main",
     "Serph91P/plugin.video.youtube": "master",
+    "Serph91P/skin.arctic.fuse.3": "omega",
 }
 DEFAULT_TARGET_BRANCH = "develop"
 VALIDATION_EVENTS = frozenset({"push", "workflow_dispatch"})
