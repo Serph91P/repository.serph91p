@@ -17,6 +17,12 @@ class ArcticCheckerTests(unittest.TestCase):
         (self.root/'icon.png').write_bytes(b'icon');(self.root/'fanart.jpg').write_bytes(b'fanart')
         self.art={k:m.hashlib.sha256((self.root/k).read_bytes()).hexdigest() for k in m.ART}
         self.guard=patch.dict(m.ART,self.art);self.guard.start();self.addCleanup(self.guard.stop)
+    def test_dependency_feed_parses_only_actual_required_ids_without_normalizing(self):
+        xml='<addons><addon id="unused" version="5.1.11~nexus"/><addon id="script.skinvariables" version="2.2.12"/></addons>'
+        entries=m.required_feed_entries(xml,{'script.skinvariables'})
+        self.assertEqual([(e.get('id'),e.get('version')) for e in entries],[('script.skinvariables','2.2.12')])
+        with self.assertRaises(ValueError):m.required_feed_entries('<wrong/>',{'script.skinvariables'})
+
     def test_only_known_image_errors_are_accepted(self):
         m.validate_baseline(self.root,list(m.BASELINE_ERRORS))
         m.validate_baseline(self.root,[])

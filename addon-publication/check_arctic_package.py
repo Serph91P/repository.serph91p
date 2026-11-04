@@ -13,7 +13,10 @@ import sys
 import xml.etree.ElementTree as ET
 
 ADDON_ID='skin.arctic.fuse.3'
-DEPENDENCY_FEED='https://raw.githubusercontent.com/jurialmunkey/repository.jurialmunkey/master/omega/zips/addons.xml'
+DEPENDENCY_FEEDS=(
+    'https://raw.githubusercontent.com/jurialmunkey/repository.jurialmunkey/master/repo/zips/addons.xml',
+    'https://raw.githubusercontent.com/jurialmunkey/repository.jurialmunkey/master/omega/zips/addons.xml',
+)
 ART={
     'icon.png':'ef6a35b6add6da0b71fe34ac26b6637c34b7642d3ffc85f94e45fe40555f41b5',
     'fanart.jpg':'e94d311931abdc895d3f6720ea7e2de530ce5021c7fc0a8357bbee8c3fa8d5e8',
@@ -35,10 +38,20 @@ def validate_baseline(path,errors):
         raise ValueError('unexpected Kodi checker errors: '+repr(sorted(unexpected)))
 
 
+def required_feed_entries(xml,required):
+    root=ET.fromstring(xml)
+    if root.tag!='addons':
+        raise ValueError('invalid dependency catalog root')
+    # The original feeds also contain legacy Nexus-only add-ons with versions
+    # the checker cannot parse. Do not parse or normalize unrelated add-ons.
+    return [element for element in root.findall('addon') if element.get('id') in required]
+
+
 def main(path):
     from kodi_addon_checker.__main__ import check_artifact
     from kodi_addon_checker.check_addon import get_all_repo_addons
     from kodi_addon_checker.addons.Repository import Repository
+    from kodi_addon_checker.addons.Addon import Addon
     from kodi_addon_checker.reporter import ReportManager
 
     validate_baseline(path,[])
@@ -51,10 +64,16 @@ def main(path):
     repos=get_all_repo_addons()
     # Native Repository.find picks the highest available version. The original
     # feed supplements official metadata; no catalog is mirrored or published.
-    extra=Repository('omega',DEPENDENCY_FEED)
-    if not getattr(extra,'addons',None) or not getattr(repos['omega'],'addons',None):
-        raise ValueError('dependency catalog unavailable; fail closed')
-    repos['omega'].addons.extend(extra.addons)
+    required={entry.get('addon') for entry in ET.parse(path/'addon.xml').findall('./requires/import')}
+    if not getattr(repos['omega'],'addons',None):
+        raise ValueError('official dependency catalog unavailable; fail closed')
+    for feed in DEPENDENCY_FEEDS:
+        response=Repository._session.get(feed,timeout=(30,30))
+        response.raise_for_status()
+        entries=required_feed_entries(response.content,required)
+        if not entries:
+            raise ValueError('original dependency feed has no required entries')
+        repos['omega'].addons.extend(Addon(entry) for entry in entries)
     args=argparse.Namespace(branch='omega',PR=False,allow_folder_id_mismatch=False,
                             skip_dependency_checks=False,reporter=['serph91p'])
     report=check_artifact(str(path),args,repos)
